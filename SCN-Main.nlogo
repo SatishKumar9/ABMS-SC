@@ -19,7 +19,7 @@ turtles-own
   up-car?   ;; true if the turtle moves downwards and false if it moves to the right
   wait-time ;; the amount of time since the last time a turtle has moved
   work      ;; the patch where they work
-  house     ;; the patch where they live
+  myhome    ;; the patch where they live
   goal      ;; where am I currently headed
 ]
 
@@ -36,6 +36,22 @@ patches-own
   auto?           ;; whether or not this intersection will switch automatically.
                   ;; false for non-intersection patches.
 ]
+
+breed [consumers consumer]
+breed [retailers retailer]
+breed [houses house]
+breed [distributors distributor]
+
+consumers-own
+[
+  speed     ;; the speed of the turtle
+  up-car?   ;; true if the turtle moves downwards and false if it moves to the right
+  wait-time ;; the amount of time since the last time a turtle has moved
+  work      ;; the patch where they work
+  myhome     ;; the patch where they live
+  goal      ;; where am I currently headed
+]
+
 
 
 ;;;;;;;;;;;;;;;;;;;;;;
@@ -77,9 +93,9 @@ to setup
     set-car-color ;; slower turtles are blue, faster ones are colored cyan
     record-data
     ;; choose at random a location for the house
-    set house one-of goal-candidates
+    set myhome one-of goal-candidates
     ;; choose at random a location for work, make sure work is not located at same location as house
-    set work one-of goal-candidates with [ self != [ house ] of myself ]
+    set work one-of goal-candidates with [ self != [ myhome ] of myself ]
     set goal work
   ]
 
@@ -151,17 +167,17 @@ to setup-cars  ;; turtle procedure
   put-on-empty-road
   ifelse intersection? [
     ifelse random 2 = 0
-      [ set up-car? true ]
-      [ set up-car? false ]
+    [ set up-car? true ]
+    [ set up-car? false ]
   ]
   [ ; if the turtle is on a vertical road (rather than a horizontal one)
     ifelse (floor ((pxcor + max-pxcor - floor(grid-x-inc - 1)) mod grid-x-inc) = 0)
-      [ set up-car? true ]
-      [ set up-car? false ]
+    [ set up-car? true ]
+    [ set up-car? false ]
   ]
   ifelse up-car?
-    [ set heading 180 ]
-    [ set heading 90 ]
+  [ set heading 180 ]
+  [ set heading 90 ]
 end
 
 ;; Find a road patch without any turtles on it and place the turtle there.
@@ -266,15 +282,15 @@ to set-car-speed  ;; turtle procedure
   ]
   [
     ifelse up-car?
-      [ set-speed 0 -1 ]
-      [ set-speed 1 0 ]
+    [ set-speed 0 -1 ]
+    [ set-speed 1 0 ]
   ]
 end
 
 ;; set the speed variable of the turtle to an appropriate value (not exceeding the
 ;; speed limit) based on whether there are turtles on the patch in front of the turtle
 to set-speed [ delta-x delta-y ]  ;; turtle procedure
-  ;; get the turtles on the patch in front of the turtle
+                                  ;; get the turtles on the patch in front of the turtle
   let turtles-ahead turtles-at delta-x delta-y
 
   ;; if there are turtles in front of the turtle, slow down
@@ -294,22 +310,22 @@ end
 ;; decrease the speed of the car
 to slow-down  ;; turtle procedure
   ifelse speed <= 0
-    [ set speed 0 ]
-    [ set speed speed - acceleration ]
+  [ set speed 0 ]
+  [ set speed speed - acceleration ]
 end
 
 ;; increase the speed of the car
 to speed-up  ;; turtle procedure
   ifelse speed > speed-limit
-    [ set speed speed-limit ]
-    [ set speed speed + acceleration ]
+  [ set speed speed-limit ]
+  [ set speed speed + acceleration ]
 end
 
 ;; set the color of the car to a different color based on how fast the car is moving
 to set-car-color  ;; turtle procedure
   ifelse speed < (speed-limit / 2)
-    [ set color blue ]
-    [ set color cyan - 2 ]
+  [ set color blue ]
+  [ set color cyan - 2 ]
 end
 
 ;; keep track of the number of stopped cars and the amount of time a car has been stopped
@@ -340,13 +356,13 @@ end
 to-report next-patch
   ;; if I am going home and I am next to the patch that is my home
   ;; my goal gets set to the patch that is my work
-  if goal = house and (member? patch-here [ neighbors4 ] of house) [
+  if goal = myhome and (member? patch-here [ neighbors4 ] of myhome) [
     set goal work
   ]
   ;; if I am going to work and I am next to the patch that is my work
   ;; my goal gets set to the patch that is my home
   if goal = work and (member? patch-here [ neighbors4 ] of work) [
-    set goal house
+    set goal myhome
   ]
   ;; CHOICES is an agentset of the candidate patches that the car can
   ;; move to (white patches are roads, green and red patches are lights)
@@ -365,9 +381,9 @@ to watch-a-car
     inspect self
     set size 2 ;; make the watched car bigger to be able to see it
 
-    ask house [
-      set pcolor yellow          ;; color the house patch yellow
-      set plabel-color yellow    ;; label the house in yellow font
+    ask myhome [
+      set pcolor yellow          ;; color the myhome patch yellow
+      set plabel-color yellow    ;; label the myhome in yellow font
       set plabel "house"
       inspect self
     ]
@@ -382,7 +398,7 @@ to watch-a-car
 end
 
 to stop-watching
-  ;; reset the house and work patches from previously watched car(s) to the background color
+  ;; reset the myhome and work patches from previously watched car(s) to the background color
   ask patches with [ pcolor = yellow or pcolor = orange ] [
     stop-inspecting self
     set pcolor 38
@@ -399,7 +415,7 @@ end
 to label-subject
   if subject != nobody [
     ask subject [
-      if goal = house [ set label "house" ]
+      if goal = myhome [ set label "myhome" ]
       if goal = work [ set label "work" ]
     ]
   ]
@@ -408,23 +424,113 @@ end
 
 ; Copyright 2008 Uri Wilensky.
 ; See Info tab for full copyright and license.
+
+to draw
+  reset-ticks
+  if mouse-down? [
+    let x round mouse-xcor
+    let y round mouse-ycor
+
+    if [pcolor] of patch x y = black [
+      if (draw-what? = "road") [
+        ask patch x y [ set pcolor grey ]
+      ]
+
+      if (draw-what? = "retail store") [
+        create-retailers 1 [
+          set xcor x
+          set ycor y
+          set shape "pentagon"
+          set pcolor white
+        ]
+      ]
+
+      if (draw-what? = "distributor") [
+        create-distributors 1 [
+          set xcor x
+          set ycor y
+          set shape "square"
+          set pcolor white
+        ]
+      ]
+
+      if (draw-what? = "house") [
+        create-houses 1 [
+          set xcor x
+          set ycor y
+          set shape "house"
+          set pcolor white
+        ]
+      ]
+    ]
+
+    if (draw-what? = "eraser") [
+      ask patch x y [ set pcolor black ]
+      ask turtles with [xcor = x and ycor = y] [
+        die
+      ]
+    ]
+  ]
+  tick
+end
+
+to clear
+  ask patches [
+    set pcolor black
+  ]
+  ask turtles [die]
+end
+
+to export-layout
+  let filename ""
+  while[ filename = "" ]
+  [
+    set filename user-input "Input Layout Name:"
+    if filename = "" [ user-message "The filename shouldn't be empty." ]
+  ]
+  user-message "exporting..."
+  export-world filename
+  user-message "exported"
+end
+
+to import-layout
+  let filename ""
+  while[ filename = "" ]
+  [
+    set filename user-input "Write Layout Name"
+    if filename = "" [ user-message "The filename shouldn't be empty." ]
+  ]
+  import-world filename
+end
+
+
+
+
+
+
+
+
+
+
+
+
 @#$#@#$#@
 GRAPHICS-WINDOW
-327
+330
 10
-668
-352
+763
+444
 -1
 -1
-9.0
+11.5
 1
 15
 1
 1
 1
 0
-1
-1
+0
+0
 1
 -18
 18
@@ -437,10 +543,10 @@ ticks
 30.0
 
 PLOT
-453
-377
-671
-552
+460
+455
+678
+630
 Average Wait Time of Cars
 Time
 Average Wait
@@ -455,10 +561,10 @@ PENS
 "default" 1.0 0 -16777216 true "" "plot mean [wait-time] of turtles"
 
 PLOT
-228
-377
-444
-552
+235
+455
+451
+630
 Average Speed of Cars
 Time
 Average Speed
@@ -529,10 +635,10 @@ NIL
 HORIZONTAL
 
 PLOT
-5
-376
-219
-551
+12
+454
+226
+629
 Stopped Cars
 Time
 Stopped Cars
@@ -714,6 +820,94 @@ NIL
 NIL
 NIL
 0
+
+CHOOSER
+785
+85
+923
+130
+draw-what?
+draw-what?
+"road" "retail store" "house" "distributor" "eraser"
+0
+
+BUTTON
+785
+45
+848
+78
+NIL
+draw
+T
+1
+T
+OBSERVER
+NIL
+NIL
+NIL
+NIL
+1
+
+BUTTON
+860
+45
+923
+78
+NIL
+clear
+NIL
+1
+T
+OBSERVER
+NIL
+NIL
+NIL
+NIL
+1
+
+TEXTBOX
+800
+20
+950
+38
+City Layout Tools
+14
+0.0
+1
+
+BUTTON
+785
+160
+892
+193
+NIL
+export-layout
+NIL
+1
+T
+OBSERVER
+NIL
+NIL
+NIL
+NIL
+1
+
+BUTTON
+905
+160
+1007
+193
+NIL
+import-layout
+NIL
+1
+T
+OBSERVER
+NIL
+NIL
+NIL
+NIL
+1
 
 @#$#@#$#@
 ## ACKNOWLEDGMENT
