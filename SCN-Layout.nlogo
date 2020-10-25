@@ -1,70 +1,7 @@
-globals
-[
-  grid-x-inc               ;; the amount of patches in between two roads in the x direction
-  grid-y-inc               ;; the amount of patches in between two roads in the y direction
-  acceleration             ;; the constant that controls how much a car speeds up or slows down by if
-                           ;; it is to accelerate or decelerate
-  phase                    ;; keeps track of the phase
-  num-cars-stopped         ;; the number of cars that are stopped during a single pass thru the go procedure
-  current-intersection     ;; the currently selected intersection
-
-  ;; patch agentsets
-  intersections ;; agentset containing the patches that are intersections
-  roads         ;; agentset containing the patches that are roads
-]
-
-turtles-own
-[
-  speed     ;; the speed of the turtle
-  up-car?   ;; true if the turtle moves downwards and false if it moves to the right
-  wait-time ;; the amount of time since the last time a turtle has moved
-  work      ;; the patch where they work
-  myhome    ;; the patch where they live
-  goal      ;; where am I currently headed
-]
-
-patches-own
-[
-  intersection?   ;; true if the patch is at the intersection of two roads
-  green-light-up? ;; true if the green light is above the intersection.  otherwise, false.
-                  ;; false for a non-intersection patches.
-  my-row          ;; the row of the intersection counting from the upper left corner of the
-                  ;; world.  -1 for non-intersection patches.
-  my-column       ;; the column of the intersection counting from the upper left corner of the
-                  ;; world.  -1 for non-intersection patches.
-  my-phase        ;; the phase for the intersection.  -1 for non-intersection patches.
-  auto?           ;; whether or not this intersection will switch automatically.
-                  ;; false for non-intersection patches.
-]
-
 breed [consumers consumer]
 breed [retailers retailer]
 breed [houses house]
 breed [distributors distributor]
-
-consumers-own
-[
-  speed     ;; the speed of the turtle
-  up-car?   ;; true if the turtle moves downwards and false if it moves to the right
-  wait-time ;; the amount of time since the last time a turtle has moved
-  work      ;; the patch where they work
-  myhome     ;; the patch where they live
-  goal      ;; where am I currently headed
-]
-
-
-
-;;;;;;;;;;;;;;;;;;;;;;
-;; Setup Procedures ;;
-;;;;;;;;;;;;;;;;;;;;;;
-
-;; Initialize the display by giving the global and patch variables initial values.
-;; Create num-cars of turtles if there are enough road patches for one turtle to
-;; be created per road patch.
-
-
-; Copyright 2008 Uri Wilensky.
-; See Info tab for full copyright and license.
 
 to draw
   reset-ticks
@@ -130,9 +67,7 @@ to export-layout
     if filename = "" [ user-message "The filename shouldn't be empty." ]
   ]
   set filename (word filename ".csv")
-  user-message "exporting..."
   export-world filename
-  user-message "exported"
 end
 
 to import-layout
@@ -146,7 +81,6 @@ to import-layout
   clear
   import-world filename
 end
-
 
 
 
