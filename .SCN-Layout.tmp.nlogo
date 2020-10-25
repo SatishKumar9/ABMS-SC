@@ -92,9 +92,9 @@ end
 
 @#$#@#$#@
 GRAPHICS-WINDOW
-295
+330
 10
-728
+763
 444
 -1
 -1
@@ -126,7 +126,7 @@ CHOOSER
 draw-what?
 draw-what?
 "road" "retail store" "house" "distributor" "eraser"
-4
+1
 
 BUTTON
 35
