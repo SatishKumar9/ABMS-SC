@@ -90,12 +90,11 @@ end
 
 
 
-
 @#$#@#$#@
 GRAPHICS-WINDOW
-330
+295
 10
-763
+728
 444
 -1
 -1
@@ -120,20 +119,20 @@ ticks
 30.0
 
 CHOOSER
-785
-85
-923
-130
+35
+90
+173
+135
 draw-what?
 draw-what?
 "road" "retail store" "house" "distributor" "eraser"
-1
+4
 
 BUTTON
-785
-45
-848
-78
+35
+50
+98
+83
 NIL
 draw
 T
@@ -147,10 +146,10 @@ NIL
 1
 
 BUTTON
-860
-45
-923
-78
+110
+50
+173
+83
 NIL
 clear
 NIL
@@ -164,20 +163,20 @@ NIL
 1
 
 TEXTBOX
-800
-20
-950
-38
+50
+25
+200
+43
 City Layout Tools
 14
 0.0
 1
 
 BUTTON
-785
-160
-892
-193
+35
+165
+142
+198
 NIL
 export-layout
 NIL
@@ -191,10 +190,10 @@ NIL
 1
 
 BUTTON
-905
-160
-1007
-193
+155
+165
+257
+198
 NIL
 import-layout
 NIL
