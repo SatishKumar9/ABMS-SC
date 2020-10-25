@@ -3,6 +3,10 @@ breed [retailers retailer]
 breed [houses house]
 breed [distributors distributor]
 
+retailers-own [
+  my-store
+]
+
 to draw
   reset-ticks
   if mouse-down? [
@@ -11,52 +15,72 @@ to draw
 
     if [pcolor] of patch x y = black [
       if (draw-what? = "road") [
-        ask patch x y [ set pcolor grey ]
+        ask patch x y [ set pcolor white ]
       ]
 
       if (draw-what? = "retail store") [
+        ask patch x y [ ask turtles-here [die] ]
         create-retailers 1 [
           set xcor x
           set ycor y
-          set shape "pentagon"
-          set pcolor white
+          set shape "circle"
+
+          set color orange
+          set size 1.5
+          set my-store False
+        ]
+      ]
+
+      if (draw-what? = "MY STORE") [
+        ask patch x y [
+          ask turtles-here [die]
+        ]
+        ask retailers with [ my-store = True] [ die ]
+        create-retailers 1 [
+          set xcor x
+          set ycor y
+          set shape "star"
+          set color orange
+          set size 2.5
+          set my-store True
         ]
       ]
 
       if (draw-what? = "distributor") [
+        ask patch x y [
+          ask turtles-here [die]
+        ]
         create-distributors 1 [
           set xcor x
           set ycor y
           set shape "square"
-          set pcolor white
+          set color red
+          set size 1.5
         ]
       ]
 
       if (draw-what? = "house") [
+        ask patch x y [
+          ask turtles-here [die]
+        ]
         create-houses 1 [
           set xcor x
           set ycor y
           set shape "house"
-          set pcolor white
+          set color yellow
+          set size 1.3
         ]
       ]
     ]
 
     if (draw-what? = "eraser") [
-      ask patch x y [ set pcolor black ]
-      ask turtles with [xcor = x and ycor = y] [
-        die
+      ask patch x y [
+        set pcolor black
+        ask turtles-here [die]
       ]
     ]
   ]
   tick
-end
-
-to clear
-  ask patches [
-    set pcolor black
-  ]
-  ask turtles [die]
 end
 
 to export-layout
@@ -78,7 +102,7 @@ to import-layout
     if filename = "" [ user-message "The filename shouldn't be empty." ]
   ]
   set filename (word filename ".csv")
-  clear
+  clear-all
   import-world filename
 end
 
@@ -92,13 +116,13 @@ end
 
 @#$#@#$#@
 GRAPHICS-WINDOW
-295
+280
 10
-728
-444
+769
+500
 -1
 -1
-11.5
+13.0
 1
 15
 1
@@ -119,20 +143,20 @@ ticks
 30.0
 
 CHOOSER
-35
-90
-173
-135
+65
+105
+203
+150
 draw-what?
 draw-what?
-"road" "retail store" "house" "distributor" "eraser"
-4
+"eraser" "road" "retail store" "house" "distributor" "MY STORE"
+1
 
 BUTTON
-35
-50
-98
-83
+65
+55
+128
+88
 NIL
 draw
 T
@@ -146,12 +170,12 @@ NIL
 1
 
 BUTTON
-110
-50
-173
-83
-NIL
+140
+55
+202
+88
 clear
+clear-all
 NIL
 1
 T
@@ -163,19 +187,19 @@ NIL
 1
 
 TEXTBOX
-50
-25
-200
-43
+80
+15
+230
+33
 City Layout Tools
 14
 0.0
 1
 
 BUTTON
-35
+20
 165
-142
+127
 198
 NIL
 export-layout
@@ -190,9 +214,9 @@ NIL
 1
 
 BUTTON
-155
+140
 165
-257
+242
 198
 NIL
 import-layout
@@ -205,6 +229,39 @@ NIL
 NIL
 NIL
 1
+
+MONITOR
+20
+275
+77
+320
+houses
+count houses
+17
+1
+11
+
+MONITOR
+95
+275
+152
+320
+retailers
+count retailers
+17
+1
+11
+
+MONITOR
+165
+275
+237
+320
+distributors
+count distributors
+17
+1
+11
 
 @#$#@#$#@
 ## ACKNOWLEDGMENT
