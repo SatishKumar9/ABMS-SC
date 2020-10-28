@@ -27,6 +27,7 @@ consumers-own
   my-home     ;; the patch where they live
   goal      ;; where am I currently headed
   prev-patch
+  temp-prev-patch
 ]
 
 patches-own
@@ -40,9 +41,6 @@ to setup
   ask consumers [die]
   setup-globals
   setup-patches  ;; ask the patches to draw themselves and set up a few variables
-
-  ;; Make an agentset of all patches where there can be a house or road
-  ;; those patches with the background color shade of brown and next to a road
 
   set-default-shape consumers "car"
 
@@ -96,8 +94,8 @@ to setup-cars[ house-xcor house-ycor ]  ;; turtle procedure
 
    ; if the turtle is on a vertical road (rather than a horizontal one)
     ifelse (xcor = house-xcor)
-      [ set up-car? true ]
       [ set up-car? false ]
+      [ set up-car? true ]
 
   ifelse up-car?
     [ set heading 180 ]
@@ -136,9 +134,12 @@ to go
     if goal = my-home and (member? patch-here [ neighbors4 ] of my-home) [
       die
     ]
+
     face next-patch ;; car heads towards its goal
     set-car-speed
+    set temp-prev-patch patch-here
     fd speed
+    if patch-here != temp-prev-patch[ set prev-patch temp-prev-patch ]
     record-data     ;; record data for plotting
     set-car-color   ;; set color to indicate speed
   ]
@@ -156,6 +157,7 @@ to spawn-consumer[house-xcor house-ycor]
       set xcor [pxcor] of place-at
       set ycor [pycor] of place-at
       set prev-patch nobody
+      set temp-prev-patch nobody
       setup-cars house-xcor house-ycor
       set-car-color ;; slower turtles are blue, faster ones are colored cyan
       record-data
@@ -236,34 +238,28 @@ end
 ;; establish goal of driver (house or work) and move to next patch along the way
 to-report next-patch
 
-  ;; if I am going to work and I am next to the patch that is my work
-  ;; my goal gets set to the patch that is my home
   if goal = go-to-store and (member? patch-here [ neighbors4 ] of go-to-store) [
     set goal my-home
-  ]
+   ]
   ;; CHOICES is an agentset of the candidate patches that the car can
   ;; move to (white patches are roads, green and red patches are lights)
   let choices neighbors with [ pcolor = white ]
-;  ifelse prev-patch != nobody [
-;    let current-xcor [pxcor] of prev-patch
-;    let current-ycor [pycor] of prev-patch
-;    print current-xcor
-;    print current-ycor
-;    print xcor
-;    print ycor
-;    set choices neighbors with [ pcolor = white and pxcor != current-xcor and pycor != current-ycor ]
-;    print "In if"
-;    print choices
-;  ][
-;    set choices neighbors with [ pcolor = white ]
-;    print "else"
-;    print choices
-;  ]
-  ;; choose the patch closest to the goal, this is the patch the car will move to
+  if prev-patch != nobody and member? prev-patch choices [
+
+    let prev-xcor [pxcor] of prev-patch
+    let prev-ycor [pycor] of prev-patch
+    set choices choices with [ remove-prev-patch prev-xcor prev-ycor  ]
+
+  ]
+
   let choice min-one-of choices [ distance [ goal ] of myself ]
-  ;; report the chosen patch
-  set prev-patch patch-here
+
   report choice
+end
+
+to-report remove-prev-patch[prev-xcor prev-ycor]
+  if pxcor = prev-xcor and pycor = prev-ycor[report false]
+  report true
 end
 
 to watch-a-car
@@ -396,7 +392,7 @@ spawn-prob
 spawn-prob
 0
 1
-0.9
+1.0
 0.1
 1
 NIL
@@ -478,7 +474,7 @@ ticks-per-cycle
 ticks-per-cycle
 1
 100
-44.0
+11.0
 1
 1
 NIL
