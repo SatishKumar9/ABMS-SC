@@ -1,3 +1,14 @@
+globals
+[
+  acceleration             ;; the constant that controls how much a car speeds up or slows down by if
+                           ;; it is to accelerate or decelerate
+  num-cars-stopped         ;; the number of cars that are stopped during a single pass thru the go procedure
+
+  ;; patch agentsets
+  intersections ;; agentset containing the patches that are intersections
+  roads         ;; agentset containing the patches that are roads
+]
+
 breed [consumers consumer]
 breed [retailers retailer]
 breed [houses house]
@@ -7,91 +18,296 @@ retailers-own [
   my-store
 ]
 
-to draw
+consumers-own
+[
+  speed     ;; the speed of the turtle
+  up-car?   ;; true if the turtle moves downwards and false if it moves to the right
+  wait-time ;; the amount of time since the last time a turtle has moved
+  go-to-store      ;; the patch where they work
+  my-home     ;; the patch where they live
+  goal      ;; where am I currently headed
+  prev-patch
+]
+
+patches-own
+[
+  intersection?   ;; true if the patch is at the intersection of two roads
+]
+
+
+to setup
+  clear-all-plots
+  ask consumers [die]
+  setup-globals
+  setup-patches  ;; ask the patches to draw themselves and set up a few variables
+
+  ;; Make an agentset of all patches where there can be a house or road
+  ;; those patches with the background color shade of brown and next to a road
+
+  set-default-shape consumers "car"
+
+
+  ;; Now create the cars and have each created car call the functions setup-cars and set-car-color
+
   reset-ticks
-  if mouse-down? [
-    let x round mouse-xcor
-    let y round mouse-ycor
-
-    if [pcolor] of patch x y = black [
-      if (draw-what? = "road") [
-        ask patch x y [ set pcolor white ]
-      ]
-
-      if (draw-what? = "retail store") [
-        ask patch x y [ ask turtles-here [die] ]
-        create-retailers 1 [
-          set xcor x
-          set ycor y
-          set shape "circle"
-
-          set color orange
-          set size 1.5
-          set my-store False
-        ]
-      ]
-
-      if (draw-what? = "MY STORE") [
-        ask patch x y [
-          ask turtles-here [die]
-        ]
-        ask retailers with [ my-store = True] [ die ]
-        create-retailers 1 [
-          set xcor x
-          set ycor y
-          set shape "star"
-          set color orange
-          set size 2.5
-          set my-store True
-        ]
-      ]
-
-      if (draw-what? = "distributor") [
-        ask patch x y [
-          ask turtles-here [die]
-        ]
-        create-distributors 1 [
-          set xcor x
-          set ycor y
-          set shape "square"
-          set color red
-          set size 1.5
-        ]
-      ]
-
-      if (draw-what? = "house") [
-        ask patch x y [
-          ask turtles-here [die]
-        ]
-        create-houses 1 [
-          set xcor x
-          set ycor y
-          set shape "house"
-          set color yellow
-          set size 1.3
-        ]
-      ]
-    ]
-
-    if (draw-what? = "eraser") [
-      ask patch x y [
-        set pcolor black
-        ask turtles-here [die]
-      ]
-    ]
-  ]
-  tick
 end
 
-to export-layout
-  let filename ""
-  while[ filename = "" ]
-  [
-    set filename user-input "Input Layout Name:"
-    if filename = "" [ user-message "The filename shouldn't be empty." ]
+;; Initialize the global variables to appropriate values
+to setup-globals
+  set num-cars-stopped 0
+  ;; don't make acceleration 0.1 since we could get a rounding error and end up on a patch boundary
+  set acceleration 0.099
+end
+
+;; Make the patches have appropriate colors, set up the roads and intersections agentsets,
+;; and initialize the traffic lights to one setting
+to setup-patches
+  ;; initialize the patch-owned variables and color the patches to a base-color
+  ask patches [
+    set intersection? false
   ]
-  set filename (word filename ".csv")
-  export-world filename
+
+  ;; initialize the global variables that hold patch agentsets
+  set roads patches with [ pcolor = white ]
+  set intersections roads with [
+    check-neighbors4-pcolor = 4
+  ]
+
+  setup-intersections
+end
+
+to-report check-neighbors4-pcolor
+  report count neighbors4 with [ pcolor = white ]
+end
+
+;; Give the intersections appropriate values for the intersection?, my-row, and my-column
+;; patch variables.  Make all the traffic lights start off so that the lights are red
+;; horizontally and green vertically.
+to setup-intersections
+  ask intersections [
+    set intersection? true
+  ]
+end
+
+;; Initialize the turtle variables to appropriate values and place the turtle on an empty road patch.
+to setup-cars[ house-xcor house-ycor ]  ;; turtle procedure
+  set speed 0
+  set wait-time 0
+
+   ; if the turtle is on a vertical road (rather than a horizontal one)
+    ifelse (xcor = house-xcor)
+      [ set up-car? true ]
+      [ set up-car? false ]
+
+  ifelse up-car?
+    [ set heading 180 ]
+    [ set heading 90 ]
+end
+
+;; Find a road patch without any turtles on it and place the turtle there.
+to-report get-empty-road  ;; turtle procedure
+  report one-of neighbors4 with [ pcolor = white and get-number-of-customers = 0 ]
+end
+
+to-report get-number-of-customers
+  report count consumers with [ xcor = pxcor and ycor = pycor ]
+end
+
+;;;;;;;;;;;;;;;;;;;;;;;;
+;; Runtime Procedures ;;
+;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; Run the simulation
+to go
+
+  if ticks mod ticks-per-cycle = 0
+  [
+    ask houses with [ random 10 < spawn-prob * 10 ][ spawn-consumer xcor ycor ]
+
+  ]
+
+
+  ;; have the intersections change their color
+  set num-cars-stopped 0
+
+  ;; set the cars’ speed, move them forward their speed, record data for plotting,
+  ;; and set the color of the cars to an appropriate color based on their speed
+  ask consumers [
+    if goal = my-home and (member? patch-here [ neighbors4 ] of my-home) [
+      die
+    ]
+    face next-patch ;; car heads towards its goal
+    set-car-speed
+    fd speed
+    record-data     ;; record data for plotting
+    set-car-color   ;; set color to indicate speed
+  ]
+  label-subject ;; if we're watching a car, have it display its goal
+  tick
+
+end
+
+
+to spawn-consumer[house-xcor house-ycor]
+  let place-at get-empty-road
+  if place-at != nobody
+  [
+    hatch-consumers 1 [
+      set xcor [pxcor] of place-at
+      set ycor [pycor] of place-at
+      set prev-patch nobody
+      setup-cars house-xcor house-ycor
+      set-car-color ;; slower turtles are blue, faster ones are colored cyan
+      record-data
+      ;; choose at random a location for the house
+      set my-home one-of houses with [xcor = house-xcor and ycor = house-ycor]
+      ;; choose at random a location for work, make sure work is not located at same location as house
+      set go-to-store one-of retailers in-radius 100
+      set goal go-to-store
+      set-car-speed
+    ]
+  ]
+
+
+
+end
+
+;; set the turtles' speed based on whether they are at a red traffic light or the speed of the
+;; turtle (if any) on the patch in front of them
+to set-car-speed  ;; turtle procedure
+    ifelse up-car?
+      [ set-speed 0 -1 ]
+      [ set-speed 1 0 ]
+end
+
+;; set the speed variable of the turtle to an appropriate value (not exceeding the
+;; speed limit) based on whether there are turtles on the patch in front of the turtle
+to set-speed [ delta-x delta-y ]  ;; turtle procedure
+  ;; get the turtles on the patch in front of the turtle
+  let consumers-ahead consumers-at delta-x delta-y
+
+  ;; if there are turtles in front of the turtle, slow down
+  ;; otherwise, speed up
+  ifelse any? consumers-ahead [
+    ifelse any? (consumers-ahead with [ up-car? != [ up-car? ] of myself ]) [
+      set speed 0
+    ]
+    [
+      set speed [speed] of one-of consumers-ahead
+      slow-down
+    ]
+  ]
+  [ speed-up ]
+end
+
+;; decrease the speed of the car
+to slow-down  ;; turtle procedure
+  ifelse speed <= 0
+    [ set speed 0 ]
+    [ set speed speed - acceleration ]
+end
+
+;; increase the speed of the car
+to speed-up  ;; turtle procedure
+  ifelse speed > speed-limit
+    [ set speed speed-limit ]
+    [ set speed speed + acceleration ]
+end
+
+;; set the color of the car to a different color based on how fast the car is moving
+to set-car-color  ;; turtle procedure
+  ifelse speed < (speed-limit / 2)
+    [ set color blue ]
+    [ set color cyan - 2 ]
+end
+
+;; keep track of the number of stopped cars and the amount of time a car has been stopped
+;; if its speed is 0
+to record-data  ;; turtle procedure
+  ifelse speed = 0 [
+    set num-cars-stopped num-cars-stopped + 1
+    set wait-time wait-time + 1
+  ]
+  [ set wait-time 0 ]
+end
+
+
+
+;; establish goal of driver (house or work) and move to next patch along the way
+to-report next-patch
+
+  ;; if I am going to work and I am next to the patch that is my work
+  ;; my goal gets set to the patch that is my home
+  if goal = go-to-store and (member? patch-here [ neighbors4 ] of go-to-store) [
+    set goal my-home
+  ]
+  ;; CHOICES is an agentset of the candidate patches that the car can
+  ;; move to (white patches are roads, green and red patches are lights)
+  let choices neighbors with [ pcolor = white ]
+;  ifelse prev-patch != nobody [
+;    let current-xcor [pxcor] of prev-patch
+;    let current-ycor [pycor] of prev-patch
+;    print current-xcor
+;    print current-ycor
+;    print xcor
+;    print ycor
+;    set choices neighbors with [ pcolor = white and pxcor != current-xcor and pycor != current-ycor ]
+;    print "In if"
+;    print choices
+;  ][
+;    set choices neighbors with [ pcolor = white ]
+;    print "else"
+;    print choices
+;  ]
+  ;; choose the patch closest to the goal, this is the patch the car will move to
+  let choice min-one-of choices [ distance [ goal ] of myself ]
+  ;; report the chosen patch
+  set prev-patch patch-here
+  report choice
+end
+
+to watch-a-car
+  stop-watching ;; in case we were previously watching another car
+  watch one-of consumers
+  ask subject [
+
+    inspect self
+    set size 2 ;; make the watched car bigger to be able to see it
+
+    ask my-home [
+      set plabel "house"
+      inspect self
+    ]
+    ask go-to-store [
+      set plabel "go-to-store"
+      inspect self
+    ]
+    set label [ plabel ] of goal ;; car displays its goal
+  ]
+end
+
+to stop-watching
+  ;; reset the house and work patches from previously watched car(s) to the background color
+  ask patches with [ pcolor = yellow or pcolor = orange ] [
+    stop-inspecting self
+    set pcolor 38
+    set plabel ""
+  ]
+  ;; make sure we close all turtle inspectors that may have been opened
+  ask consumers [
+    set label ""
+    stop-inspecting self
+  ]
+  reset-perspective
+end
+
+to label-subject
+  if subject != nobody [
+    ask subject [
+      if goal = my-home [ set label "house" ]
+      if goal = go-to-store [ set label "go-to-store" ]
+    ]
+  ]
 end
 
 to import-layout
@@ -106,22 +322,16 @@ to import-layout
   import-world filename
 end
 
-
-
-
-
-
-
-
+; See Info tab for full copyright and license.
 @#$#@#$#@
 GRAPHICS-WINDOW
-280
-10
-769
-500
+900
+15
+1493
+609
 -1
 -1
-13.0
+15.811
 1
 15
 1
@@ -141,67 +351,99 @@ GRAPHICS-WINDOW
 ticks
 30.0
 
-CHOOSER
-65
-105
-203
-150
-draw-what?
-draw-what?
-"eraser" "road" "retail store" "house" "distributor" "MY STORE"
-2
-
-BUTTON
-65
-55
-128
-88
-NIL
-draw
-T
-1
-T
-OBSERVER
-NIL
-NIL
-NIL
-NIL
-1
-
-BUTTON
-140
-55
-202
-88
-clear
-clear-all
-NIL
-1
-T
-OBSERVER
-NIL
-NIL
-NIL
-NIL
-1
-
-TEXTBOX
-80
-15
-230
-33
-City Layout Tools
-14
+PLOT
+465
+255
+683
+430
+Average Wait Time of Cars
+Time
+Average Wait
 0.0
+100.0
+0.0
+5.0
+true
+false
+"" ""
+PENS
+"default" 1.0 0 -16777216 true "" "plot mean [wait-time] of consumers"
+
+PLOT
+240
+255
+456
+430
+Average Speed of Cars
+Time
+Average Speed
+0.0
+100.0
+0.0
+1.0
+true
+false
+"" ""
+PENS
+"default" 1.0 0 -16777216 true "" "plot mean [speed] of consumers"
+
+SLIDER
+15
+135
+210
+168
+spawn-prob
+spawn-prob
+0
 1
+0.9
+0.1
+1
+NIL
+HORIZONTAL
+
+PLOT
+17
+254
+231
+429
+Stopped Cars
+Time
+Stopped Cars
+0.0
+100.0
+0.0
+100.0
+true
+false
+"" ""
+PENS
+"default" 1.0 0 -16777216 true "" "plot num-cars-stopped"
 
 BUTTON
-20
-165
-127
-198
+230
+10
+315
+43
+Go
+go
+T
+1
+T
+OBSERVER
 NIL
-export-layout
+NIL
+NIL
+NIL
+0
+
+BUTTON
+130
+10
+214
+43
+Setup
+setup
 NIL
 1
 T
@@ -212,11 +454,75 @@ NIL
 NIL
 1
 
+SLIDER
+15
+90
+160
+123
+speed-limit
+speed-limit
+0.1
+1
+1.0
+0.1
+1
+NIL
+HORIZONTAL
+
+SLIDER
+15
+55
+160
+88
+ticks-per-cycle
+ticks-per-cycle
+1
+100
+44.0
+1
+1
+NIL
+HORIZONTAL
+
 BUTTON
-140
+15
+185
+160
+218
+watch a car
+watch-a-car
+NIL
+1
+T
+OBSERVER
+NIL
+NIL
+NIL
+NIL
+0
+
+BUTTON
 165
-242
-198
+185
+310
+218
+stop watching
+stop-watching
+NIL
+1
+T
+OBSERVER
+NIL
+NIL
+NIL
+NIL
+0
+
+BUTTON
+15
+10
+117
+43
 NIL
 import-layout
 NIL
@@ -230,10 +536,10 @@ NIL
 1
 
 MONITOR
-20
-275
-77
-320
+500
+10
+557
+55
 houses
 count houses
 17
@@ -241,10 +547,10 @@ count houses
 11
 
 MONITOR
-95
-275
-152
-320
+420
+10
+477
+55
 retailers
 count retailers
 17
@@ -252,12 +558,23 @@ count retailers
 11
 
 MONITOR
-165
-275
-237
-320
+330
+10
+402
+55
 distributors
 count distributors
+17
+1
+11
+
+MONITOR
+575
+10
+647
+55
+consumers
+count consumers
 17
 1
 11
