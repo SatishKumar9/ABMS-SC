@@ -16,18 +16,24 @@ breed [distributors distributor]
 
 retailers-own [
   my-store
+  stock
+  max-inventory
+  waiting-list
+  shoppers-list
+  max-occupancy
 ]
 
 consumers-own
 [
   speed     ;; the speed of the turtle
-  up-car?   ;; true if the turtle moves downwards and false if it moves to the right
   wait-time ;; the amount of time since the last time a turtle has moved
   go-to-store      ;; the patch where they work
   my-home     ;; the patch where they live
   goal      ;; where am I currently headed
   prev-patch
   temp-prev-patch
+  stock-needed
+  at-store?
 ]
 
 patches-own
@@ -41,7 +47,7 @@ to setup
   ask consumers [die]
   setup-globals
   setup-patches  ;; ask the patches to draw themselves and set up a few variables
-
+  setup-retailers
   set-default-shape consumers "car"
 
 
@@ -87,28 +93,31 @@ to setup-intersections
   ]
 end
 
+to setup-retailers
+  ask retailers[
+    set stock random 100 + 100
+    set max-inventory random 1000 + 500
+    set waiting-list []
+    set shoppers-list []
+    set max-occupancy random 10 + 10
+  ]
+end
+
 ;; Initialize the turtle variables to appropriate values and place the turtle on an empty road patch.
 to setup-cars[ house-xcor house-ycor ]  ;; turtle procedure
   set speed 0
   set wait-time 0
 
-   ; if the turtle is on a vertical road (rather than a horizontal one)
-    ifelse (xcor = house-xcor)
-      [ set up-car? false ]
-      [ set up-car? true ]
-
-  ifelse up-car?
-    [ set heading 180 ]
+  ; if the turtle is on a vertical road (rather than a horizontal one)
+  ifelse (xcor = house-xcor)
     [ set heading 90 ]
+  [ set heading 180 ]
+
 end
 
 ;; Find a road patch without any turtles on it and place the turtle there.
 to-report get-empty-road  ;; turtle procedure
-  report one-of neighbors4 with [ pcolor = white and get-number-of-customers = 0 ]
-end
-
-to-report get-number-of-customers
-  report count consumers with [ xcor = pxcor and ycor = pycor ]
+  report one-of neighbors4 with [ pcolor = white and not any? turtles-on self ]
 end
 
 ;;;;;;;;;;;;;;;;;;;;;;;;
@@ -121,7 +130,6 @@ to go
   if ticks mod ticks-per-cycle = 0
   [
     ask houses with [ random 10 < spawn-prob * 10 ][ spawn-consumer xcor ycor ]
-
   ]
 
 
@@ -130,22 +138,93 @@ to go
 
   ;; set the cars’ speed, move them forward their speed, record data for plotting,
   ;; and set the color of the cars to an appropriate color based on their speed
+
+  ask retailers [
+    if length shoppers-list > 0
+    [
+      let agent first shoppers-list
+      ifelse stock >= [stock-needed] of agent
+      [
+        set stock stock - [stock-needed] of agent
+        ask agent [
+          set stock-needed 0
+        ]
+      ][
+        let current-stock stock
+        ask agent [
+          set stock-needed stock-needed - current-stock
+        ]
+        set stock 0
+      ]
+
+      set waiting-list lput agent waiting-list
+      set shoppers-list but-first shoppers-list
+    ]
+
+    if length waiting-list > 0
+    [
+      print "Store"
+      let place-at get-empty-road
+      if place-at != nobody
+      [
+        print "in place-at"
+        let agent first waiting-list
+        set waiting-list but-first waiting-list
+;        let go-to-xcor [pxcor] of place-at
+;        let go-to-ycor [pycor] of place-at
+        ask agent [
+          set xcor [pxcor] of place-at
+          set ycor [pycor] of place-at
+          set at-store? false
+          set speed 0
+          set prev-patch nobody
+          set temp-prev-patch nobody
+        ]
+      ]
+    ]
+  ]
+
   ask consumers [
     if goal = my-home and (member? patch-here [ neighbors4 ] of my-home) [
       die
     ]
 
-    face next-patch ;; car heads towards its goal
-    set-car-speed
-    set temp-prev-patch patch-here
-    fd speed
-    if patch-here != temp-prev-patch[ set prev-patch temp-prev-patch ]
-    record-data     ;; record data for plotting
-    set-car-color   ;; set color to indicate speed
+    if goal = go-to-store and (member? patch-here [ neighbors4 ] of go-to-store) [
+
+      ifelse length [waiting-list] of go-to-store + length [shoppers-list] of go-to-store < [max-occupancy] of go-to-store[
+        set xcor [xcor] of go-to-store
+        set ycor [ycor] of go-to-store
+        let current self
+        ask go-to-store[
+          set shoppers-list lput current shoppers-list
+        ]
+        set at-store? true
+      ][
+        let available-store retailers in-radius 100
+        let remove-store go-to-store
+        set available-store available-store with [ self != remove-store ]
+        set go-to-store one-of available-store
+      ]
+
+      set goal my-home
+   ]
+
+    if at-store? = false[ travel ]
+
   ]
   label-subject ;; if we're watching a car, have it display its goal
   tick
 
+end
+
+to travel
+  face next-patch ;; car heads towards its goal
+  set-speed
+  set temp-prev-patch patch-here
+  fd speed
+  if patch-here != temp-prev-patch[ set prev-patch temp-prev-patch ]
+  record-data     ;; record data for plotting
+  set-car-color   ;; set color to indicate speed
 end
 
 
@@ -156,6 +235,8 @@ to spawn-consumer[house-xcor house-ycor]
     hatch-consumers 1 [
       set xcor [pxcor] of place-at
       set ycor [pycor] of place-at
+      set stock-needed random 5 + 1
+      set at-store? false
       set prev-patch nobody
       set temp-prev-patch nobody
       setup-cars house-xcor house-ycor
@@ -166,7 +247,7 @@ to spawn-consumer[house-xcor house-ycor]
       ;; choose at random a location for work, make sure work is not located at same location as house
       set go-to-store one-of retailers in-radius 100
       set goal go-to-store
-      set-car-speed
+      set-speed
     ]
   ]
 
@@ -174,30 +255,17 @@ to spawn-consumer[house-xcor house-ycor]
 
 end
 
-;; set the turtles' speed based on whether they are at a red traffic light or the speed of the
-;; turtle (if any) on the patch in front of them
-to set-car-speed  ;; turtle procedure
-    ifelse up-car?
-      [ set-speed 0 -1 ]
-      [ set-speed 1 0 ]
-end
-
 ;; set the speed variable of the turtle to an appropriate value (not exceeding the
 ;; speed limit) based on whether there are turtles on the patch in front of the turtle
-to set-speed [ delta-x delta-y ]  ;; turtle procedure
+to set-speed  ;; turtle procedure
   ;; get the turtles on the patch in front of the turtle
-  let consumers-ahead consumers-at delta-x delta-y
-
+  let consumers-ahead consumers-on patch-ahead 1
+  set consumers-ahead consumers-ahead with [heading = [heading] of myself]
   ;; if there are turtles in front of the turtle, slow down
   ;; otherwise, speed up
   ifelse any? consumers-ahead [
-    ifelse any? (consumers-ahead with [ up-car? != [ up-car? ] of myself ]) [
-      set speed 0
-    ]
-    [
-      set speed [speed] of one-of consumers-ahead
+    set speed [speed] of min-one-of consumers-ahead [speed]
       slow-down
-    ]
   ]
   [ speed-up ]
 end
@@ -238,9 +306,7 @@ end
 ;; establish goal of driver (house or work) and move to next patch along the way
 to-report next-patch
 
-  if goal = go-to-store and (member? patch-here [ neighbors4 ] of go-to-store) [
-    set goal my-home
-   ]
+
   ;; CHOICES is an agentset of the candidate patches that the car can
   ;; move to (white patches are roads, green and red patches are lights)
   let choices neighbors with [ pcolor = white ]
@@ -284,9 +350,13 @@ end
 
 to stop-watching
   ;; reset the house and work patches from previously watched car(s) to the background color
-  ask patches with [ pcolor = yellow or pcolor = orange ] [
+  ask houses [
     stop-inspecting self
-    set pcolor 38
+    set plabel ""
+  ]
+
+  ask retailers [
+    stop-inspecting self
     set plabel ""
   ]
   ;; make sure we close all turtle inspectors that may have been opened
@@ -392,7 +462,7 @@ spawn-prob
 spawn-prob
 0
 1
-1.0
+0.9
 0.1
 1
 NIL
@@ -421,7 +491,7 @@ BUTTON
 10
 315
 43
-Go
+go
 go
 T
 1
@@ -438,7 +508,7 @@ BUTTON
 10
 214
 43
-Setup
+setup
 setup
 NIL
 1
@@ -459,7 +529,7 @@ speed-limit
 speed-limit
 0.1
 1
-1.0
+0.8
 0.1
 1
 NIL
@@ -474,7 +544,7 @@ ticks-per-cycle
 ticks-per-cycle
 1
 100
-11.0
+23.0
 1
 1
 NIL
@@ -574,6 +644,23 @@ count consumers
 17
 1
 11
+
+BUTTON
+305
+105
+382
+138
+go-once
+go
+NIL
+1
+T
+OBSERVER
+NIL
+NIL
+NIL
+NIL
+1
 
 @#$#@#$#@
 ## ACKNOWLEDGMENT
