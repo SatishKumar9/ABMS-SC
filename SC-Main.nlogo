@@ -13,6 +13,7 @@ breed [consumers consumer]
 breed [retailers retailer]
 breed [houses house]
 breed [distributors distributor]
+breed [trucks truck]
 
 retailers-own [
   my-store
@@ -21,6 +22,7 @@ retailers-own [
   waiting-list
   shoppers-list
   max-occupancy
+  ordered?
 ]
 
 consumers-own
@@ -36,19 +38,40 @@ consumers-own
   at-store?
 ]
 
+trucks-own
+[
+  speed     ;; the speed of the turtle
+  wait-time ;; the amount of time since the last time a turtle has moved
+  go-to-store      ;; the patch where they work
+  my-home     ;; the patch where they live
+  goal      ;; where am I currently headed
+  prev-patch
+  temp-prev-patch
+  stock
+  on-road?
+]
+
 patches-own
 [
   intersection?   ;; true if the patch is at the intersection of two roads
 ]
 
+distributors-own
+[
+  pending-orders
+]
 
 to setup
   clear-all-plots
   ask consumers [die]
+  ask trucks [die]
   setup-globals
   setup-patches  ;; ask the patches to draw themselves and set up a few variables
   setup-retailers
+  setup-distributors
+
   set-default-shape consumers "car"
+  set-default-shape trucks "airplane"
 
 
   ;; Now create the cars and have each created car call the functions setup-cars and set-car-color
@@ -100,6 +123,13 @@ to setup-retailers
     set waiting-list []
     set shoppers-list []
     set max-occupancy random 10 + 10
+    set ordered? false
+  ]
+end
+
+to setup-distributors
+  ask distributors[
+    set pending-orders []
   ]
 end
 
@@ -110,7 +140,7 @@ to setup-cars[ house-xcor house-ycor ]  ;; turtle procedure
 
   ; if the turtle is on a vertical road (rather than a horizontal one)
   ifelse (xcor = house-xcor)
-    [ set heading 90 ]
+  [ set heading 90 ]
   [ set heading 180 ]
 
 end
@@ -120,9 +150,6 @@ to-report get-empty-road  ;; turtle procedure
   report one-of neighbors4 with [ pcolor = white and not any? turtles-on self ]
 end
 
-;;;;;;;;;;;;;;;;;;;;;;;;
-;; Runtime Procedures ;;
-;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; Run the simulation
 to go
@@ -139,49 +166,69 @@ to go
   ;; set the cars’ speed, move them forward their speed, record data for plotting,
   ;; and set the color of the cars to an appropriate color based on their speed
 
-  ask retailers [
-    if length shoppers-list > 0
+  ask distributors [
+    let place-at get-empty-road
+    if place-at != nobody
     [
-      let agent first shoppers-list
-      ifelse stock >= [stock-needed] of agent
-      [
-        set stock stock - [stock-needed] of agent
-        ask agent [
-          set stock-needed 0
-        ]
-      ][
-        let current-stock stock
-        ask agent [
-          set stock-needed stock-needed - current-stock
-        ]
-        set stock 0
-      ]
-
-      set waiting-list lput agent waiting-list
-      set shoppers-list but-first shoppers-list
-    ]
-
-    if length waiting-list > 0
-    [
-      print "Store"
-      let place-at get-empty-road
-      if place-at != nobody
-      [
-        print "in place-at"
-        let agent first waiting-list
-        set waiting-list but-first waiting-list
-;        let go-to-xcor [pxcor] of place-at
-;        let go-to-ycor [pycor] of place-at
-        ask agent [
+      let pending-truck one-of trucks-here
+      if pending-truck != nobody[
+        ask pending-truck [
+          setup-cars xcor ycor
           set xcor [pxcor] of place-at
           set ycor [pycor] of place-at
-          set at-store? false
-          set speed 0
-          set prev-patch nobody
-          set temp-prev-patch nobody
+          set on-road? true
+          set-car-color ;; slower turtles are blue, faster ones are colored cyan
+          record-data
+          set-speed
         ]
       ]
     ]
+  ]
+
+  ask trucks with [ on-road? ] [
+
+    if goal = my-home and (member? patch-here [ neighbors4 ] of my-home) [
+      die
+    ]
+
+    if goal = go-to-store and (member? patch-here [ neighbors4 ] of go-to-store) [
+      let stock-asked stock
+      ask go-to-store[
+        set stock stock + stock-asked
+        set ordered? false
+      ]
+      set stock 0
+      set goal my-home
+      set speed 0
+      set prev-patch nobody
+      set temp-prev-patch nobody
+    ]
+
+    travel
+  ]
+
+  ask retailers [
+    if not ordered? and stock < 50[
+      let my-distributor one-of distributors in-radius 100
+      let store-value self
+      let stock-ordered 500
+      hatch-trucks 1 [
+        set xcor [pxcor] of my-distributor
+        set ycor [pycor] of my-distributor
+        set stock stock-ordered
+        set prev-patch nobody
+        set temp-prev-patch nobody
+        set my-home my-distributor
+        ;; choose at random a location for work, make sure work is not located at same location as house
+        set go-to-store store-value
+        set goal go-to-store
+        set on-road? false
+      ]
+      set ordered? true
+    ]
+    if length shoppers-list > 0[shopping]
+    if length waiting-list > 0[get-car-on-road]
+
   ]
 
   ask consumers [
@@ -190,23 +237,7 @@ to go
     ]
 
     if goal = go-to-store and (member? patch-here [ neighbors4 ] of go-to-store) [
-
-      ifelse length [waiting-list] of go-to-store + length [shoppers-list] of go-to-store < [max-occupancy] of go-to-store[
-        set xcor [xcor] of go-to-store
-        set ycor [ycor] of go-to-store
-        let current self
-        ask go-to-store[
-          set shoppers-list lput current shoppers-list
-        ]
-        set at-store? true
-      ][
-        let available-store retailers in-radius 100
-        let remove-store go-to-store
-        set available-store available-store with [ self != remove-store ]
-        set go-to-store one-of available-store
-      ]
-
-      set goal my-home
+      reached-store
    ]
 
     if at-store? = false[ travel ]
@@ -215,6 +246,70 @@ to go
   label-subject ;; if we're watching a car, have it display its goal
   tick
 
+end
+
+to reached-store
+  ifelse length [waiting-list] of go-to-store + length [shoppers-list] of go-to-store < [max-occupancy] of go-to-store and [stock] of go-to-store > 0 [
+    set xcor [xcor] of go-to-store
+    set ycor [ycor] of go-to-store
+    let current self
+    ask go-to-store[
+      set shoppers-list lput current shoppers-list
+    ]
+    set at-store? true
+    set goal my-home
+  ][
+    let available-store retailers in-radius 100
+    let remove-store go-to-store
+    set available-store available-store with [ self != remove-store ]
+    set go-to-store one-of available-store
+    set goal go-to-store
+  ]
+
+end
+
+to shopping
+  let agent first shoppers-list
+  ifelse stock >= [stock-needed] of agent
+  [
+    set stock stock - [stock-needed] of agent
+    ask agent [
+      set stock-needed 0
+    ]
+  ][
+    let current-stock stock
+    ask agent [
+      set stock-needed stock-needed - current-stock
+      let available-store retailers in-radius 100
+      let remove-store go-to-store
+      set available-store available-store with [ self != remove-store ]
+      set go-to-store one-of available-store
+      set goal go-to-store
+    ]
+    set stock 0
+
+  ]
+  set waiting-list lput agent waiting-list
+  set shoppers-list but-first shoppers-list
+end
+
+to get-car-on-road
+  let place-at get-empty-road
+  if place-at != nobody
+  [
+    let agent first waiting-list
+    set waiting-list but-first waiting-list
+    ;        let go-to-xcor [pxcor] of place-at
+    ;        let go-to-ycor [pycor] of place-at
+    ask agent [
+      set xcor [pxcor] of place-at
+      set ycor [pycor] of place-at
+      set at-store? false
+      set speed 0
+      set prev-patch nobody
+      set temp-prev-patch nobody
+    ]
+  ]
 end
 
 to travel
@@ -251,23 +346,49 @@ to spawn-consumer[house-xcor house-ycor]
     ]
   ]
 
-
-
 end
 
 ;; set the speed variable of the turtle to an appropriate value (not exceeding the
 ;; speed limit) based on whether there are turtles on the patch in front of the turtle
 to set-speed  ;; turtle procedure
   ;; get the turtles on the patch in front of the turtle
-  let consumers-ahead consumers-on patch-ahead 1
-  set consumers-ahead consumers-ahead with [heading = [heading] of myself]
+  let consumers-ahead consumers-on  patch-ahead 1
+  let trucks-ahead  trucks-on patch-ahead 1
+  set consumers-ahead consumers-ahead with [ in-direction heading [heading] of myself]
+  set trucks-ahead trucks-ahead with [ in-direction heading [heading] of myself]
   ;; if there are turtles in front of the turtle, slow down
   ;; otherwise, speed up
-  ifelse any? consumers-ahead [
-    set speed [speed] of min-one-of consumers-ahead [speed]
+  ifelse any? consumers-ahead or any? trucks-ahead [
+    let change-speed []
+    if count trucks-ahead > 0 [
+      let min-truck-speed [speed] of min-one-of trucks-ahead [speed]
+      set change-speed lput min-truck-speed change-speed
+    ]
+    if count consumers-ahead > 0 [
+       let min-consumer-speed [speed] of min-one-of consumers-ahead [speed]
+      set change-speed lput min-consumer-speed change-speed
+    ]
+
+    set speed min change-speed
+
+
       slow-down
   ]
   [ speed-up ]
+end
+
+to-report in-direction[near-car-heading car-heading]
+  let diff 0
+  if car-heading >= 0 and car-heading < diff[
+    if near-car-heading >= 0 and near-car-heading < diff[report true]
+    if near-car-heading > (360 - diff)  and near-car-heading <= 360[report true]
+  ]
+  if car-heading > (360 - diff)  and car-heading <= 360[
+    if near-car-heading >= 0 and near-car-heading < diff [report true]
+    if near-car-heading > (360 - diff)  and near-car-heading <= 360[report true]
+  ]
+  if abs (near-car-heading - car-heading) < diff [report true]
+  report false
 end
 
 ;; decrease the speed of the car
@@ -433,7 +554,7 @@ true
 false
 "" ""
 PENS
-"default" 1.0 0 -16777216 true "" "plot mean [wait-time] of consumers"
+"default" 1.0 0 -16777216 true "" "plot mean [wait-time] of consumers "
 
 PLOT
 240
@@ -462,7 +583,7 @@ spawn-prob
 spawn-prob
 0
 1
-0.9
+0.3
 0.1
 1
 NIL
@@ -544,7 +665,7 @@ ticks-per-cycle
 ticks-per-cycle
 1
 100
-23.0
+10.0
 1
 1
 NIL
@@ -646,10 +767,10 @@ count consumers
 11
 
 BUTTON
-305
-105
-382
-138
+235
+60
+312
+93
 go-once
 go
 NIL
