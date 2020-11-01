@@ -18,6 +18,8 @@ breed [trucks truck]
 retailers-own [
   my-store
   stock
+  sold-stock
+  purchased-stock
   max-inventory
   waiting-list
   shoppers-list
@@ -29,10 +31,11 @@ consumers-own
 [
   speed     ;; the speed of the turtle
   wait-time ;; the amount of time since the last time a turtle has moved
-  go-to-store      ;; the patch where they work
+  go-to-store
   my-home     ;; the patch where they live
   goal      ;; where am I currently headed
   prev-patch
+  roaming-time
   temp-prev-patch
   stock-needed
   at-store?
@@ -42,7 +45,7 @@ trucks-own
 [
   speed     ;; the speed of the turtle
   wait-time ;; the amount of time since the last time a turtle has moved
-  go-to-store      ;; the patch where they work
+  go-to-store
   my-home     ;; the patch where they live
   goal      ;; where am I currently headed
   prev-patch
@@ -61,6 +64,11 @@ distributors-own
   pending-orders
 ]
 
+houses-own
+[
+  max-roaming-time
+]
+
 to setup
   clear-all-plots
   ask consumers [die]
@@ -69,6 +77,7 @@ to setup
   setup-patches  ;; ask the patches to draw themselves and set up a few variables
   setup-retailers
   setup-distributors
+  setup-houses
 
   set-default-shape consumers "car"
   set-default-shape trucks "airplane"
@@ -77,6 +86,12 @@ to setup
   ;; Now create the cars and have each created car call the functions setup-cars and set-car-color
 
   reset-ticks
+end
+
+to setup-houses
+  ask houses[
+    set max-roaming-time 5 * ticks-per-cycle
+  ]
 end
 
 ;; Initialize the global variables to appropriate values
@@ -119,6 +134,8 @@ end
 to setup-retailers
   ask retailers[
     set stock random 100 + 100
+    set purchased-stock stock
+    set sold-stock 0
     set max-inventory random 1000 + 500
     set waiting-list []
     set shoppers-list []
@@ -194,6 +211,7 @@ to go
     if goal = go-to-store and (member? patch-here [ neighbors4 ] of go-to-store) [
       let stock-asked stock
       ask go-to-store[
+        set purchased-stock purchased-stock + stock-asked
         set stock stock + stock-asked
         set ordered? false
       ]
@@ -211,7 +229,7 @@ to go
     if not ordered? and stock < 50[
       let my-distributor one-of distributors in-radius 100
       let store-value self
-      let stock-ordered 500
+      let stock-ordered 200
       hatch-trucks 1 [
         set xcor [pxcor] of my-distributor
         set ycor [pycor] of my-distributor
@@ -233,6 +251,12 @@ to go
 
   ask consumers [
     if goal = my-home and (member? patch-here [ neighbors4 ] of my-home) [
+      if stock-needed > 0 [
+        ask my-home [
+          set max-roaming-time max-roaming-time + 10
+        ]
+      ]
+
       die
     ]
 
@@ -240,8 +264,13 @@ to go
       reached-store
    ]
 
-    if at-store? = false[ travel ]
-
+    if at-store? = false[
+      set roaming-time roaming-time + 1
+      if roaming-time = [max-roaming-time] of my-home [
+        set goal my-home
+      ]
+      travel
+      ]
   ]
   label-subject ;; if we're watching a car, have it display its goal
   tick
@@ -273,6 +302,7 @@ to shopping
   ifelse stock >= [stock-needed] of agent
   [
     set stock stock - [stock-needed] of agent
+    set sold-stock sold-stock + [stock-needed] of agent
     ask agent [
       set stock-needed 0
     ]
@@ -286,6 +316,7 @@ to shopping
       set go-to-store one-of available-store
       set goal go-to-store
     ]
+    set sold-stock stock
     set stock 0
 
   ]
@@ -337,6 +368,7 @@ to spawn-consumer[house-xcor house-ycor]
       setup-cars house-xcor house-ycor
       set-car-color ;; slower turtles are blue, faster ones are colored cyan
       record-data
+      set roaming-time 0
       ;; choose at random a location for the house
       set my-home one-of houses with [xcor = house-xcor and ycor = house-ycor]
       ;; choose at random a location for work, make sure work is not located at same location as house
@@ -512,13 +544,13 @@ end
 ; See Info tab for full copyright and license.
 @#$#@#$#@
 GRAPHICS-WINDOW
-900
-15
-1493
-609
+825
+35
+1234
+445
 -1
 -1
-15.811
+10.84
 1
 15
 1
@@ -572,7 +604,7 @@ true
 false
 "" ""
 PENS
-"default" 1.0 0 -16777216 true "" "plot mean [speed] of consumers"
+"pen-1" 1.0 0 -7500403 true "" "plot mean [speed] of consumers"
 
 SLIDER
 15
@@ -605,7 +637,7 @@ true
 false
 "" ""
 PENS
-"default" 1.0 0 -16777216 true "" "plot num-cars-stopped"
+"default" 1.0 0 -2674135 true "" "plot num-cars-stopped"
 
 BUTTON
 230
@@ -782,6 +814,24 @@ NIL
 NIL
 NIL
 1
+
+PLOT
+465
+85
+665
+235
+My Store Profit
+NIL
+NIL
+0.0
+10.0
+0.0
+10.0
+true
+false
+"set-plot-y-range -100 100" ""
+PENS
+"default" 1.0 0 -16777216 true "" "plot [((sold-stock - purchased-stock * 0.8) / (purchased-stock * 0.8 + 1)) * 100] of one-of retailers with [my-store = true]"
 
 @#$#@#$#@
 ## ACKNOWLEDGMENT
