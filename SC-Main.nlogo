@@ -1,106 +1,99 @@
-globals
-[
-  acceleration             ;; the constant that controls how much a car speeds up or slows down by if
-                           ;; it is to accelerate or decelerate
-  num-cars-stopped         ;; the number of cars that are stopped during a single pass thru the go procedure
-
-  ;; patch agentsets
-  intersections ;; agentset containing the patches that are intersections
-  roads         ;; agentset containing the patches that are roads
-
-  is-day
-  num-days-completed
-]
-
 breed [consumers consumer]
 breed [retailers retailer]
 breed [houses house]
 breed [distributors distributor]
 breed [trucks truck]
 
+globals
+[
+  acceleration
+  num-cars-stopped
+  is-day             ;; true if its day-time or false if isn't
+  num-days-completed
+  intersections      ;; agentset containing the patches that are intersections
+  roads              ;; agentset containing the patches that are roads
+]
+
 retailers-own [
-  my-store
-  stock
-  sold-stock
-  purchased-stock
-  max-inventory
-  waiting-list
-  shoppers-list
+  my-store           ;; true if it's user's store and false if isn't
+  stock              ;; present stock
+  sold-stock         ;; total stock sold till tick
+  purchased-stock    ;; total stock purchased till tick
+  max-inventory      ;; max capacity
+  waiting-list       ;; consumers waiting queue to leave the shop
+  shoppers-list      ;; consumers waiting queue to shop
   max-occupancy
-  ordered?
-  num-consumers
+  ordered?           ;; true if ordered from a distributor or false if isn't
+  num-consumers      ;; count of consumers at any time
 ]
 
 consumers-own
 [
-  speed     ;; the speed of the turtle
-  wait-time ;; the amount of time since the last time a turtle has moved
+  speed              ;; the speed of the turtle
+  wait-time          ;; the amount of time since the last time a turtle has moved
   go-to-store
-  my-home     ;; the patch where they live
-  goal      ;; where am I currently headed
+  my-home            ;; the patch where they live
+  goal               ;; where am I currently headed
   prev-patch
-  roaming-time
+  roaming-time       ;; total travelling time
   temp-prev-patch
-  stock-needed
-  at-store?
+  stock-needed       ;; qty to purchase
+  at-store?          ;; true if inside any store
 ]
 
 trucks-own
 [
-  speed     ;; the speed of the turtle
-  wait-time ;; the amount of time since the last time a turtle has moved
+  speed              ;; the speed of the turtle
+  wait-time          ;; the amount of time since the last time a turtle has moved
   go-to-store
-  my-home     ;; the patch where they live
-  goal      ;; where am I currently headed
+  my-home            ;; the patch where they live
+  goal               ;; where am I currently headed
   prev-patch
   temp-prev-patch
-  stock
-  on-road?
+  stock              ;; qty carrying to be delivered
+  on-road?           ;; true if travelling on-road
 ]
 
-patches-own
-[
-  intersection?   ;; true if the patch is at the intersection of two roads
+patches-own [
+  intersection?      ;; true if the patch is at the intersection of two roads
 ]
 
-distributors-own
-[
-  pending-orders
+distributors-own [
+  pending-orders     ;; list of all orders yet to deliver
 ]
 
-houses-own
-[
-  max-roaming-time
-  max-people
+houses-own [
+  max-roaming-time   ;; max shopping time
+  max-people         ;; avg no. of consumers shop in a day
 ]
+
+
+;;;;;;;;;;; Setup Procedures ;;;;;;;;;;
 
 to setup
   clear-all-plots
   ask consumers [die]
   ask trucks [die]
   setup-globals
-  setup-patches  ;; ask the patches to draw themselves and set up a few variables
+  setup-patches
   setup-retailers
   setup-distributors
   setup-houses
 
   set-default-shape consumers "car"
-  set-default-shape trucks "airplane"
-
-
-  ;; Now create the cars and have each created car call the functions setup-cars and set-car-color
-
+  set-default-shape trucks "truck"
   reset-ticks
 end
 
+
 to setup-houses
   ask houses[
-    set max-roaming-time 5 * ticks-per-cycle
+    set max-roaming-time 2 * ticks-per-cycle
     set max-people avg-people-shopping
   ]
 end
 
-;; Initialize the global variables to appropriate values
+
 to setup-globals
   set num-cars-stopped 0
   ;; don't make acceleration 0.1 since we could get a rounding error and end up on a patch boundary
@@ -109,35 +102,30 @@ to setup-globals
   set num-days-completed -1
 end
 
-;; Make the patches have appropriate colors, set up the roads and intersections agentsets,
-;; and initialize the traffic lights to one setting
+
 to setup-patches
-  ;; initialize the patch-owned variables and color the patches to a base-color
   ask patches [
     set intersection? false
   ]
-
-  ;; initialize the global variables that hold patch agentsets
   set roads patches with [ pcolor = white ]
   set intersections roads with [
     check-neighbors4-pcolor = 4
   ]
-
   setup-intersections
 end
+
 
 to-report check-neighbors4-pcolor
   report count neighbors4 with [ pcolor = white ]
 end
 
-;; Give the intersections appropriate values for the intersection?, my-row, and my-column
-;; patch variables.  Make all the traffic lights start off so that the lights are red
-;; horizontally and green vertically.
+
 to setup-intersections
   ask intersections [
     set intersection? true
   ]
 end
+
 
 to setup-retailers
   ask retailers[
@@ -147,11 +135,12 @@ to setup-retailers
     set max-inventory random 1000 + 5000
     set waiting-list []
     set shoppers-list []
-    set max-occupancy random 10 + 10
+    set max-occupancy random 15 + 10
     set ordered? false
     set num-consumers 0
   ]
 end
+
 
 to setup-distributors
   ask distributors[
@@ -159,8 +148,8 @@ to setup-distributors
   ]
 end
 
-;; Initialize the turtle variables to appropriate values and place the turtle on an empty road patch.
-to setup-cars[ house-xcor house-ycor ]  ;; turtle procedure
+
+to setup-cars[ house-xcor house-ycor ]
   set speed 0
   set wait-time 0
 
@@ -171,53 +160,43 @@ to setup-cars[ house-xcor house-ycor ]  ;; turtle procedure
 
 end
 
+
 ;; Find a road patch without any turtles on it and place the turtle there.
-to-report get-empty-road  ;; turtle procedure
+to-report get-empty-road
   report one-of neighbors4 with [ pcolor = white and not any? turtles-on self ]
 end
 
 
-;; Run the simulation
+;;;;;;;;;;; Go Procedures ;;;;;;;;;;;;;
+
 to go
-  if ticks != 0 and ticks mod 720 = 0[
-    ifelse is-day[
-      set is-day false
-      set num-days-completed num-days-completed + 1
-      ask retailers with [my-store = true][
-        set-current-plot "Number of Consumers"
-        if num-days-completed mod 7 = 0[
-          clear-plot
-        ]
-        create-temporary-plot-pen "default"
-        set-plot-pen-mode 1
-        set-plot-pen-color black
-        plotxy num-days-completed mod 7 num-consumers
-        set num-consumers 0
+  set num-cars-stopped 0
+  plot-profits
+  ifelse is-day
+  [ go-houses ]
+  [ go-distributors ]
+  go-retailers
+  go-consumers
+  go-trucks
+
+  label-subject         ;; if we're watching a car, have it display its goal
+  tick
+end
 
 
-        set-current-plot "My Store Profit"
-        create-temporary-plot-pen "default"
-        set-plot-pen-color black
-        plotxy num-days-completed ((sold-stock - (purchased-stock * wholesale-cost)) / (purchased-stock * wholesale-cost + 1)) * 100
-
-      ]
-      ask houses [ set max-people avg-people-shopping ]
-      ask consumers [set goal my-home]
-    ][
-      set is-day true
+to go-houses
+  if ticks mod ticks-per-cycle = 0[
+    ask houses with [ random 10 < spawn-prob * 10 and max-people > 0 ]
+    [
+      set max-people max-people - 1
+      spawn-consumer xcor ycor
     ]
   ]
+end
 
-  ifelse is-day [
-    if ticks mod ticks-per-cycle = 0
-    [
-      ask houses with [ random 10 < spawn-prob * 10 and max-people > 0 ][
-        set max-people max-people - 1
-        spawn-consumer xcor ycor ]
 
-    ]
-  ][
-    ask distributors [
+to go-distributors
+  ask distributors [
     let place-at get-empty-road
     if place-at != nobody
     [
@@ -228,36 +207,30 @@ to go
           set xcor [pxcor] of place-at
           set ycor [pycor] of place-at
           set on-road? true
-          set-car-color ;; slower turtles are blue, faster ones are colored cyan
+          set-car-color
           record-data
           set-speed
         ]
       ]
     ]
   ]
+end
 
 
-  ]
-
-  ;; have the intersections change their color
-  set num-cars-stopped 0
-
-  ;; set the cars’ speed, move them forward their speed, record data for plotting,
-  ;; and set the color of the cars to an appropriate color based on their speed
-
+to go-retailers
   ask retailers [
-    if not ordered? and stock < 100[
+    if not ordered? and stock < 100 [                          ;; order when stock is below a threshold
       let my-distributor one-of distributors in-radius 100
       let store-value self
       let stock-ordered 700
       hatch-trucks 1 [
         set xcor [pxcor] of my-distributor
         set ycor [pycor] of my-distributor
+        set color magenta + 1
         set stock stock-ordered
         set prev-patch nobody
         set temp-prev-patch nobody
         set my-home my-distributor
-        ;; choose at random a location for work, make sure work is not located at same location as house
         set go-to-store store-value
         set goal go-to-store
         set on-road? false
@@ -266,9 +239,11 @@ to go
     ]
     if length shoppers-list > 0[shopping]
     if length waiting-list > 0[get-car-on-road]
-
   ]
+end
 
+
+to go-consumers
   ask consumers [
     if goal = my-home and (member? patch-here [ neighbors4 ] of my-home) [
       if stock-needed > 0 and is-day [
@@ -276,7 +251,6 @@ to go
           set max-roaming-time max-roaming-time + 10
         ]
       ]
-
       die
     ]
 
@@ -290,12 +264,13 @@ to go
         set goal my-home
       ]
       travel
-      ]
+    ]
   ]
-  label-subject ;; if we're watching a car, have it display its goal
+end
 
+
+to go-trucks
   ask trucks with [ on-road? ] [
-
     if goal = my-home and (member? patch-here [ neighbors4 ] of my-home) [
       die
     ]
@@ -313,16 +288,14 @@ to go
       set prev-patch nobody
       set temp-prev-patch nobody
     ]
-
     travel
-    ]
-
-  tick
-
+  ]
 end
 
+
 to reached-store
-  ifelse length [waiting-list] of go-to-store + length [shoppers-list] of go-to-store < [max-occupancy] of go-to-store and [stock] of go-to-store > 0 [
+  ifelse length [waiting-list] of go-to-store + length [shoppers-list] of go-to-store < [max-occupancy] of go-to-store and [stock] of go-to-store > 0
+  [
     set xcor [xcor] of go-to-store
     set ycor [ycor] of go-to-store
     let current self
@@ -338,8 +311,32 @@ to reached-store
     set go-to-store one-of available-store
     set goal go-to-store
   ]
-
 end
+
+
+to spawn-consumer[house-xcor house-ycor]
+  let place-at get-empty-road
+  if place-at != nobody
+  [
+    hatch-consumers 1 [
+      set xcor [pxcor] of place-at
+      set ycor [pycor] of place-at
+      set stock-needed random 5 + 1
+      set at-store? false
+      set prev-patch nobody
+      set temp-prev-patch nobody
+      setup-cars house-xcor house-ycor
+      set-car-color ;; slower turtles are blue, faster ones are colored cyan
+      record-data
+      set roaming-time 0
+      set my-home one-of houses with [xcor = house-xcor and ycor = house-ycor]
+      set go-to-store one-of retailers in-radius 100
+      set goal go-to-store
+      set-speed
+    ]
+  ]
+end
+
 
 to shopping
   let agent first shoppers-list
@@ -362,12 +359,12 @@ to shopping
     ]
     set sold-stock sold-stock + stock
     set stock 0
-
   ]
   set num-consumers num-consumers + 1
   set waiting-list lput agent waiting-list
   set shoppers-list but-first shoppers-list
 end
+
 
 to get-car-on-road
   let place-at get-empty-road
@@ -375,8 +372,6 @@ to get-car-on-road
   [
     let agent first waiting-list
     set waiting-list but-first waiting-list
-    ;        let go-to-xcor [pxcor] of place-at
-    ;        let go-to-ycor [pycor] of place-at
     ask agent [
       set xcor [pxcor] of place-at
       set ycor [pycor] of place-at
@@ -388,68 +383,65 @@ to get-car-on-road
   ]
 end
 
+
 to travel
   face next-patch ;; car heads towards its goal
   set-speed
   set temp-prev-patch patch-here
   fd speed
-  if patch-here != temp-prev-patch[ set prev-patch temp-prev-patch ]
-  record-data     ;; record data for plotting
-  set-car-color   ;; set color to indicate speed
+  if patch-here != temp-prev-patch [ set prev-patch temp-prev-patch ]
+  record-data
+  set-car-color
 end
 
 
-to spawn-consumer[house-xcor house-ycor]
-  let place-at get-empty-road
-  if place-at != nobody
+to-report next-patch
+  ;; CHOICES is an agentset of the candidate patches that the car can move to (white patches are roads)
+  let choices neighbors with [ pcolor = white ]
+  if prev-patch != nobody and member? prev-patch choices
   [
-    hatch-consumers 1 [
-      set xcor [pxcor] of place-at
-      set ycor [pycor] of place-at
-      set stock-needed random 5 + 1
-      set at-store? false
-      set prev-patch nobody
-      set temp-prev-patch nobody
-      setup-cars house-xcor house-ycor
-      set-car-color ;; slower turtles are blue, faster ones are colored cyan
-      record-data
-      set roaming-time 0
-      ;; choose at random a location for the house
-      set my-home one-of houses with [xcor = house-xcor and ycor = house-ycor]
-      ;; choose at random a location for work, make sure work is not located at same location as house
-      set go-to-store one-of retailers in-radius 100
-      set goal go-to-store
-      set-speed
-    ]
+    let prev-xcor [pxcor] of prev-patch
+    let prev-ycor [pycor] of prev-patch
+    set choices choices with [ remove-prev-patch prev-xcor prev-ycor ]
   ]
-
+  let choice min-one-of choices [ distance [ goal ] of myself ]
+  report choice
 end
+
+
+to-report remove-prev-patch[prev-xcor prev-ycor]
+  if pxcor = prev-xcor and pycor = prev-ycor[report false]
+  report true
+end
+
 
 ;; set the speed variable of the turtle to an appropriate value (not exceeding the
 ;; speed limit) based on whether there are turtles on the patch in front of the turtle
-to set-speed  ;; turtle procedure
-  ;; get the turtles on the patch in front of the turtle
+to set-speed
   let consumers-ahead consumers-on  patch-ahead 1
   let trucks-ahead  trucks-on patch-ahead 1
+
   set consumers-ahead consumers-ahead with [ in-direction heading [heading] of myself]
   set trucks-ahead trucks-ahead with [ in-direction heading [heading] of myself]
-  ;; if there are turtles in front of the turtle, slow down
-  ;; otherwise, speed up
-  ifelse any? consumers-ahead or any? trucks-ahead [
+
+  ifelse any? consumers-ahead or any? trucks-ahead
+  [
     let change-speed []
     if count trucks-ahead > 0 [
       let min-truck-speed [speed] of min-one-of trucks-ahead [speed]
       set change-speed lput min-truck-speed change-speed
     ]
     if count consumers-ahead > 0 [
-       let min-consumer-speed [speed] of min-one-of consumers-ahead [speed]
+      let min-consumer-speed [speed] of min-one-of consumers-ahead [speed]
       set change-speed lput min-consumer-speed change-speed
     ]
     set speed min change-speed
-      slow-down
+    slow-down
+  ][
+    speed-up
   ]
-  [ speed-up ]
 end
+
 
 to-report in-direction[near-car-heading car-heading]
   let diff 0
@@ -465,30 +457,31 @@ to-report in-direction[near-car-heading car-heading]
   report false
 end
 
-;; decrease the speed of the car
-to slow-down  ;; turtle procedure
+
+to slow-down
   ifelse speed <= 0
     [ set speed 0 ]
     [ set speed speed - acceleration ]
 end
 
-;; increase the speed of the car
-to speed-up  ;; turtle procedure
+
+to speed-up
   ifelse speed > speed-limit
     [ set speed speed-limit ]
     [ set speed speed + acceleration ]
 end
 
-;; set the color of the car to a different color based on how fast the car is moving
-to set-car-color  ;; turtle procedure
+
+to set-car-color
   ifelse speed < (speed-limit / 2)
     [ set color blue ]
-    [ set color cyan - 2 ]
+    [ set color cyan + 2 ]
 end
 
-;; keep track of the number of stopped cars and the amount of time a car has been stopped
-;; if its speed is 0
-to record-data  ;; turtle procedure
+
+;;;;;;;;;;  Plot Procedures ;;;;;;;;;;;;;
+
+to record-data
   ifelse speed = 0 [
     set num-cars-stopped num-cars-stopped + 1
     set wait-time wait-time + 1
@@ -497,40 +490,45 @@ to record-data  ;; turtle procedure
 end
 
 
-
-;; establish goal of driver (house or work) and move to next patch along the way
-to-report next-patch
-
-
-  ;; CHOICES is an agentset of the candidate patches that the car can
-  ;; move to (white patches are roads, green and red patches are lights)
-  let choices neighbors with [ pcolor = white ]
-  if prev-patch != nobody and member? prev-patch choices [
-
-    let prev-xcor [pxcor] of prev-patch
-    let prev-ycor [pycor] of prev-patch
-    set choices choices with [ remove-prev-patch prev-xcor prev-ycor  ]
-
+to plot-profits
+  if ticks != 0 and ticks mod 720 = 0 [
+    ifelse is-day
+    [
+      set is-day false
+      set num-days-completed num-days-completed + 1
+      ask retailers with [my-store = true]
+      [
+        set-current-plot "Number of Consumers"
+        if num-days-completed mod 7 = 0 [
+          clear-plot
+        ]
+        create-temporary-plot-pen "default"
+        set-plot-pen-mode 1
+        set-plot-pen-color black
+        plotxy num-days-completed mod 7 num-consumers
+        set num-consumers 0
+        set-current-plot "My Store Profit"
+        create-temporary-plot-pen "default"
+        set-plot-pen-color black
+        plotxy num-days-completed ((sold-stock - (purchased-stock * wholesale-cost)) / (purchased-stock * wholesale-cost + 1)) * 100
+      ]
+      ask houses [ set max-people avg-people-shopping ]
+      ask consumers [set goal my-home]
+    ][
+      set is-day true
+    ]
   ]
-
-  let choice min-one-of choices [ distance [ goal ] of myself ]
-
-  report choice
 end
 
-to-report remove-prev-patch[prev-xcor prev-ycor]
-  if pxcor = prev-xcor and pycor = prev-ycor[report false]
-  report true
-end
+
+;;;;;;;;;;;  Watch Prodcedures  ;;;;;;;;;;;
 
 to watch-a-car
-  stop-watching ;; in case we were previously watching another car
+  stop-watching              ;; in case we were previously watching another car
   watch one-of consumers
   ask subject [
-
     inspect self
-    set size 2 ;; make the watched car bigger to be able to see it
-
+    set size 2               ;; make the watched car bigger to be able to see it
     ask my-home [
       set plabel "house"
       inspect self
@@ -543,13 +541,13 @@ to watch-a-car
   ]
 end
 
+
 to stop-watching
   ;; reset the house and work patches from previously watched car(s) to the background color
   ask houses [
     stop-inspecting self
     set plabel ""
   ]
-
   ask retailers [
     stop-inspecting self
     set plabel ""
@@ -562,6 +560,7 @@ to stop-watching
   reset-perspective
 end
 
+
 to label-subject
   if subject != nobody [
     ask subject [
@@ -570,6 +569,9 @@ to label-subject
     ]
   ]
 end
+
+
+;;;;;;;;;; Import procedures ;;;;;;;;;;
 
 to import-layout
   let filename ""
@@ -582,17 +584,15 @@ to import-layout
   clear-all
   import-world filename
 end
-
-; See Info tab for full copyright and license.
 @#$#@#$#@
 GRAPHICS-WINDOW
-825
-35
-1234
-445
+745
+55
+1194
+505
 -1
 -1
-10.84
+11.92
 1
 15
 1
@@ -610,13 +610,13 @@ GRAPHICS-WINDOW
 1
 1
 ticks
-30.0
+120.0
 
 PLOT
-20
-240
-236
-415
+30
+330
+246
+505
 Average Speed of Cars
 Time
 Average Speed
@@ -628,45 +628,30 @@ true
 false
 "" ""
 PENS
-"pen-1" 1.0 0 -7500403 true "" "plot mean [speed] of consumers"
-
-SLIDER
-15
-135
-210
-168
-spawn-prob
-spawn-prob
-0
-1
-0.3
-0.1
-1
-NIL
-HORIZONTAL
-
-BUTTON
-230
-10
-315
-43
-go
-go
-T
-1
-T
-OBSERVER
-NIL
-NIL
-NIL
-NIL
-0
+"speed" 1.0 0 -7500403 true "" "if count consumers > 0 [ plot mean [speed] of consumers]"
 
 BUTTON
 130
-10
-214
-43
+35
+215
+68
+go
+go
+T
+1
+T
+OBSERVER
+NIL
+NIL
+NIL
+NIL
+0
+
+BUTTON
+30
+35
+114
+68
 setup
 setup
 NIL
@@ -680,10 +665,10 @@ NIL
 1
 
 SLIDER
-15
-90
-160
-123
+30
+135
+175
+168
 speed-limit
 speed-limit
 0.1
@@ -695,10 +680,10 @@ NIL
 HORIZONTAL
 
 SLIDER
-15
-55
-160
-88
+30
+95
+175
+128
 ticks-per-cycle
 ticks-per-cycle
 1
@@ -710,10 +695,10 @@ NIL
 HORIZONTAL
 
 BUTTON
-15
-185
-160
-218
+30
+255
+175
+288
 watch a car
 watch-a-car
 NIL
@@ -727,10 +712,10 @@ NIL
 0
 
 BUTTON
-165
-185
-310
-218
+180
+255
+325
+288
 stop watching
 stop-watching
 NIL
@@ -744,10 +729,10 @@ NIL
 0
 
 BUTTON
-15
-10
-117
-43
+925
+515
+1027
+548
 NIL
 import-layout
 NIL
@@ -761,10 +746,10 @@ NIL
 1
 
 MONITOR
-500
-10
-557
+680
 55
+737
+100
 houses
 count houses
 17
@@ -772,10 +757,10 @@ count houses
 11
 
 MONITOR
-420
-10
-477
+625
 55
+682
+100
 retailers
 count retailers
 17
@@ -783,10 +768,10 @@ count retailers
 11
 
 MONITOR
-330
-10
-402
+555
 55
+627
+100
 distributors
 count distributors
 17
@@ -794,21 +779,21 @@ count distributors
 11
 
 MONITOR
-575
-10
-647
-55
-consumers
+555
+285
+627
+330
+Consumers
 count consumers
 17
 1
 11
 
 BUTTON
-235
-60
-312
-93
+230
+35
+307
+68
 go-once
 go
 NIL
@@ -822,13 +807,13 @@ NIL
 1
 
 PLOT
-520
-240
-740
-415
+500
+330
+720
+505
 My Store Profit
-NIL
-NIL
+Days
+Profit
 0.0
 10.0
 0.0
@@ -839,10 +824,10 @@ false
 PENS
 
 SLIDER
-250
-140
-422
-173
+205
+135
+377
+168
 wholesale-cost
 wholesale-cost
 0
@@ -854,13 +839,13 @@ NIL
 HORIZONTAL
 
 PLOT
-265
-240
-490
-415
+275
+330
+485
+505
 Number of Consumers
-NIL
-NIL
+Days in week
+Consumers
 0.0
 10.0
 0.0
@@ -870,22 +855,11 @@ false
 "" ""
 PENS
 
-MONITOR
-665
-10
-762
-55
-Number of days
-num-days-completed + 1
-17
-1
-11
-
 SLIDER
-250
-100
-422
-133
+205
+95
+377
+128
 avg-people-shopping
 avg-people-shopping
 0
@@ -896,154 +870,121 @@ avg-people-shopping
 NIL
 HORIZONTAL
 
+MONITOR
+500
+285
+557
+330
+Day
+num-days-completed + 1
+17
+1
+11
+
+TEXTBOX
+280
+515
+450
+556
+Number of consumers shopping at my store in a day
+11
+0.0
+1
+
+SLIDER
+30
+185
+202
+218
+spawn-prob
+spawn-prob
+0
+1
+0.8
+0.1
+1
+NIL
+HORIZONTAL
+
 @#$#@#$#@
-## ACKNOWLEDGMENT
-
-This model is from Chapter Five of the book "Introduction to Agent-Based Modeling: Modeling Natural, Social and Engineered Complex Systems with NetLogo", by Uri Wilensky & William Rand.
-
-* Wilensky, U. & Rand, W. (2015). Introduction to Agent-Based Modeling: Modeling Natural, Social and Engineered Complex Systems with NetLogo. Cambridge, MA. MIT Press.
-
-This model is in the IABM Textbook folder of the NetLogo Models Library. The model, as well as any updates to the model, can also be found on the textbook website: http://www.intro-to-abm.com/.
-
-## ERRATA
-
-The code for this model differs somewhat from the code in the textbook. The textbook code calls the STAY procedure, which is not defined here. One of our suggestions in the "Extending the model" section below does, however, invite you to write a STAY procedure.
-
 ## WHAT IS IT?
 
-The Traffic Grid Goal model simulates traffic moving in a city grid. It allows you to control traffic lights and global variables, such as the speed limit and the number of cars, and explore traffic dynamics.
+The Profit maximization for a Retailer in a Supply Chain Network model simulates how retailer profit changes over time with the shopping behaviour of consumers, by moving in traffic across a city layout, whose layout can also be designed using another model in the series named "Supply chain - Layout".
 
-This model extends the Traffic Grid model by giving the cars goals, namely to drive to and from work. It is the third in a series of traffic models that use different kinds of agent cognition. The agents in this model use goal-based cognition.
+This model simulates the day-night movement of consumers, by giving the goals - to drive to-and-from stores. The agents in this model use goal-based cognition.
 
 ## HOW IT WORKS
 
-Each time step, the cars face the next destination they are trying to get to (either work or home) and attempt to move forward at their current speed. If their current speed is less than the speed limit and there is no car directly in front of them, they accelerate. If there is a slower car in front of them, they match the speed of the slower car and decelerate. If there is a red light or a stopped car in front of them, they stop.
+The model simulates day-night simulation of a supply chain network, to capture the movement of consumers. Each time step(tick) is assumed to be 1 minute.  So every 1,440 ticks(time steps) represents a complete day and thus, every 720 ticks represents half-a-day. 
 
-Each car has a house patch and a work patch. (The house patch turns yellow and the work patch turns orange for a car that you are watching.) The cars will alternately drive from their home to work and then from their work to home.
+Each consumer has a house patch and a store patch. The cars(consumers) alternately drive from home to store, and store to home, or another store, if their stock requirement isn't met.
 
-There are two different ways the lights can change. First, the user can change any light at any time by making the light current, and then clicking CHANGE LIGHT. Second, lights can change automatically, once per cycle. Initially, all lights will automatically change at the beginning of each cycle.
+All the consumers try to shop at day time. During day-time, the consumers spawn at random time steps across houses. They start moving towards their destination. During other half of the day (720 ticks of night-time), remaining consumers head back to their homes and only trucks move on the road to deliver ordered stocks from distributors to retailers. This repeats for every 1440 minutes(time steps) to simulate days, weeks, and so on. 
+
+The retailers raise an order from distributor when their stocks reduce a threshold and as said, the delivery happens only at night.
+
+Each time step, the cars(consumers)/trucks face the next destination they are trying to get to (either store or home) and attempt to move forward at their current speed. If their current speed is less than the speed limit and there is no car/truck directly in front of them, they accelerate. If there is a slower car/truck in front of them, they match the speed of the slower car/truck and decelerate. If there is a stopped car/truck in front of them, they stop.
+
 
 ## HOW TO USE IT
 
-Change the traffic grid (using the sliders GRID-SIZE-X and GRID-SIZE-Y) to make the desired number of lights. Change any other setting that you would like to change. Press the SETUP button.
+Import the city layout desgined using the "Supply chain - layout" model. (You can always change any existing layouts by importing it first using the model. Don't forget to export the layout before importing it here!!). 
 
-At this time, you may configure the lights however you like, with any combination of auto/manual and any phase. Changes to the state of the current light are made using the CURRENT-AUTO?, CURRENT-PHASE and CHANGE LIGHT controls. You may select the current intersection using the SELECT INTERSECTION control. See below for details.
+Press the SETUP button.
 
-Start the simulation by pressing the GO button. You may continue to make changes to the lights while the simulation is running.
+At this time, you may configure the slider values like ticks-per-cycle, spawn-prob, speed-limit, avg-people-shopping and wholesale price cost of product. See below for details.
+
+Start the simulation by pressing the GO button. You may continue to make changes to any slider values while the simulation is running.
 
 ### Buttons
 
-SETUP -- generates a new traffic grid based on the current GRID-SIZE-X and GRID-SIZE-Y and NUM-CARS number of cars. Each car chooses a home and work location. All lights are set to auto, and all phases are set to 0%.
+IMPORT-LAYOUT -- imports an exixting layout created using "supply chain layout" model. 
 
-GO -- runs the simulation indefinitely. Cars travel from their homes to their work and back.
+SETUP -- All initial parameters are set to every agent.
 
-CHANGE LIGHT -- changes the direction traffic may flow through the current light. A light can be changed manually even if it is operating in auto mode.
+GO -- runs the simulation indefinitely. Consumers spawn and travel from their homes to the stores and back. Trucks spawn and travel, only when there's an order placed by a retailer.
 
-SELECT INTERSECTION -- allows you to select a new "current" intersection. When this button is depressed, click in the intersection which you would like to make current. When you've selected an intersection, the "current" label will move to the new intersection and this button will automatically pop up.
+GO-ONCE -- run the simulation for one time step
 
-WATCH A CAR -- selects a car to watch. Sets the car's label to its goal. Displays the car's house in yellow and the car's work in orange. Opens inspectors for the watched car and its house and work.
+WATCH A CAR -- selects a car to watch. Sets the car's label to its goal. Displays the car's house and the car's retail store it headed to. Opens inspectors for the watched car and its house and store.
 
-STOP WATCHING -- stops watching the watched car and resets its labels and house and work colors.
+STOP WATCHING -- stops watching the watched car and resets its labels of house and store.
 
 ### Sliders
 
-SPEED-LIMIT -- sets the maximum speed for the cars.
+SPEED-LIMIT -- sets the maximum speed for the consumers cars while travelling.
 
-NUM-CARS -- sets the number of cars in the simulation (you must press the SETUP button to see the change).
+TICKS-PER-CYCLE -- spawns a consumer with some probability (set by spawn-prob slider) for each cycle from each house. This allows you to increase or decrease the number of consumers that can spawn from a single house within a day.
 
-TICKS-PER-CYCLE -- sets the number of ticks that will elapse for each cycle. This has no effect on manual lights. This allows you to increase or decrease the granularity with which lights can automatically change.
+SPAWN-PROB -- the probability of spawning a consumer in every cycle for each house.
 
-GRID-SIZE-X -- sets the number of vertical roads there are (you must press the SETUP button to see the change).
+AVG-PEOPLE-SHOPPING -- the total average number of consumers spawn from a particular house at any time in a day. 
 
-GRID-SIZE-Y -- sets the number of horizontal roads there are (you must press the SETUP button to see the change).
+WHOLESALE COST -- the price with which the retailer buys the products from the distributor. (The selling price is set to 1 per product)
 
-CURRENT-PHASE -- controls when the current light changes, if it is in auto mode. The slider value represents the percentage of the way through each cycle at which the light should change. So, if the TICKS-PER-CYCLE is 20 and CURRENT-PHASE is 75%, the current light will switch at tick 15 of each cycle.
-
-### Switches
-
-POWER? -- toggles the presence of traffic lights.
-
-CURRENT-AUTO? -- toggles the current light between automatic mode, where it changes once per cycle (according to CURRENT-PHASE), and manual, in which you directly control it with CHANGE LIGHT.
 
 ### Plots
 
-STOPPED CARS -- displays the number of stopped cars over time.
-
 AVERAGE SPEED OF CARS -- displays the average speed of cars over time.
 
-AVERAGE WAIT TIME OF CARS -- displays the average time cars are stopped over time.
+NUMBER OF CONSUMERS -- displays number of consumers visit the user's store to shop each day in a week 
+
+MY-STORE-PROFIT -- displays profit for the user's store overtime.
+
 
 ## THINGS TO NOTICE
 
-How is this model different than the Traffic Grid model? The one thing you may see at first glance is that cars move in all directions instead of only left to right and top to bottom. You will probably agree that this looks much more realistic.
-
-Another thing to notice is that, sometimes, cars get stuck: as explained in the book this is because the cars are mesuring the distance to their goals "as the bird flies", but reaching the goal sometimes require temporarily moving further from it (to get around a corner, for instance). A good way to witness that is to try the WATCH A CAR button until you find a car that is stuck. This situation could be prevented if the agents were more cognitively sophisticated. Do you think that it could also be avoided if the streets were layed out in a pattern different from the current one?
-
 ## THINGS TO TRY
-
-You can change the "granularity" of the grid by using the GRID-SIZE-X and GRID-SIZE-Y sliders. Do cars get stuck more often with bigger values for GRID-SIZE-X and GRID-SIZE-Y, resulting in more streets, or smaller values, resulting in less streets? What if you use a big value for X and a small value for Y?
-
-In the original Traffic Grid model from the model library, removing the traffic lights (by setting the POWER? switch to Off) quickly resulted in gridlock. Try it in this version of the model. Do you see a gridlock happening? Why do you think that is? Do you think it is more realistic than in the original model?
 
 ## EXTENDING THE MODEL
 
-Can you improve the efficiency of the cars in their commute? In particular, can you think of a way to avoid cars getting "stuck" like we noticed above? Perhaps a simple rule like "don't go back to the patch you were previously on" would help. This should be simple to implement by giving the cars a (very) short term memory: something like a `previous-patch` variable that would be checked at the time of choosing the next patch to move to. Does it help in all situations? How would you deal with situations where the cars still get stuck?
-
-Can you enable the cars to stay at home and work for some time before leaving? This would involve writing a STAY procedure that would be called instead moving the car around if the right condition is met (i.e., if the car has reached its current goal).
-
-At the moment, only two of the four arms of each intersection have traffic lights on them. Having only two lights made sense in the original Traffic Grid model because the streets in that model were one-way streets, with traffic always flowing in the same direction. In our more complex model, cars can go in all directions, so it would be better if all four arms of the intersection had lights. What happens if you make that modification? Is the flow of traffic better or worse?
-
 ## RELATED MODELS
 
-- "Traffic Basic": a simple model of the movement of cars on a highway.
+- "Supply chain layout" : model to design, import/export the city layout to simulate using this model.
 
-- "Traffic Basic Utility": a version of "Traffic Basic" including a utility function for the cars.
-
-- "Traffic Basic Adaptive": a version of "Traffic Basic" where cars adapt their acceleration to try and maintain a smooth flow of traffic.
-
-- "Traffic Basic Adaptive Individuals": a version of "Traffic Basic Adaptive" where each car adapts individually, instead of all cars adapting in unison.
-
-- "Traffic 2 Lanes": a more sophisticated two-lane version of the "Traffic Basic" model.
-
-- "Traffic Intersection": a model of cars traveling through a single intersection.
-
-- "Traffic Grid": a model of traffic moving in a city grid, with stoplights at the intersections.
-
-- "Gridlock HubNet": a version of "Traffic Grid" where students control traffic lights in real-time.
-
-- "Gridlock Alternate HubNet": a version of "Gridlock HubNet" where students can enter NetLogo code to plot custom metrics.
-
-The traffic models from chapter 5 of the IABM textbook demonstrate different types of cognitive agents: "Traffic Basic Utility" demonstrates _utility-based agents_, "Traffic Grid Goal" demonstrates _goal-based agents_, and "Traffic Basic Adaptive" and "Traffic Basic Adaptive Individuals" demonstrate _adaptive agents_.
 
 ## HOW TO CITE
 
-This model is part of the textbook, “Introduction to Agent-Based Modeling: Modeling Natural, Social and Engineered Complex Systems with NetLogo.”
-
-If you mention this model or the NetLogo software in a publication, we ask that you include the citations below.
-
-For the model itself:
-
-* Rand, W., Wilensky, U. (2008).  NetLogo Traffic Grid Goal model.  http://ccl.northwestern.edu/netlogo/models/TrafficGridGoal.  Center for Connected Learning and Computer-Based Modeling, Northwestern Institute on Complex Systems, Northwestern University, Evanston, IL.
-
-Please cite the NetLogo software as:
-
-* Wilensky, U. (1999). NetLogo. http://ccl.northwestern.edu/netlogo/. Center for Connected Learning and Computer-Based Modeling, Northwestern University, Evanston, IL.
-
-Please cite the textbook as:
-
-* Wilensky, U. & Rand, W. (2015). Introduction to Agent-Based Modeling: Modeling Natural, Social and Engineered Complex Systems with NetLogo. Cambridge, MA. MIT Press.
-
-## COPYRIGHT AND LICENSE
-
-Copyright 2008 Uri Wilensky.
-
-![CC BY-NC-SA 3.0](http://ccl.northwestern.edu/images/creativecommons/byncsa.png)
-
-This work is licensed under the Creative Commons Attribution-NonCommercial-ShareAlike 3.0 License.  To view a copy of this license, visit https://creativecommons.org/licenses/by-nc-sa/3.0/ or send a letter to Creative Commons, 559 Nathan Abbott Way, Stanford, California 94305, USA.
-
-Commercial licenses are also available. To inquire about commercial licenses, please contact Uri Wilensky at uri@northwestern.edu.
-
-<!-- 2008 Cite: Rand, W., Wilensky, U. -->
 @#$#@#$#@
 default
 true
