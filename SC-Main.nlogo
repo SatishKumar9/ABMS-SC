@@ -9,6 +9,7 @@ globals
   roads         ;; agentset containing the patches that are roads
 
   is-day
+  num-days-completed
 ]
 
 breed [consumers consumer]
@@ -27,6 +28,7 @@ retailers-own [
   shoppers-list
   max-occupancy
   ordered?
+  num-consumers
 ]
 
 consumers-own
@@ -69,6 +71,7 @@ distributors-own
 houses-own
 [
   max-roaming-time
+  max-people
 ]
 
 to setup
@@ -93,6 +96,7 @@ end
 to setup-houses
   ask houses[
     set max-roaming-time 5 * ticks-per-cycle
+    set max-people avg-people-shopping
   ]
 end
 
@@ -102,6 +106,7 @@ to setup-globals
   ;; don't make acceleration 0.1 since we could get a rounding error and end up on a patch boundary
   set acceleration 0.099
   set is-day true
+  set num-days-completed -1
 end
 
 ;; Make the patches have appropriate colors, set up the roads and intersections agentsets,
@@ -136,7 +141,7 @@ end
 
 to setup-retailers
   ask retailers[
-    set stock random 1000 + 1000
+    set stock random 500 + 500
     set purchased-stock stock
     set sold-stock 0
     set max-inventory random 1000 + 5000
@@ -144,6 +149,7 @@ to setup-retailers
     set shoppers-list []
     set max-occupancy random 10 + 10
     set ordered? false
+    set num-consumers 0
   ]
 end
 
@@ -176,6 +182,26 @@ to go
   if ticks != 0 and ticks mod 720 = 0[
     ifelse is-day[
       set is-day false
+      set num-days-completed num-days-completed + 1
+      ask retailers with [my-store = true][
+        set-current-plot "Number of Consumers"
+        if num-days-completed mod 7 = 0[
+          clear-plot
+        ]
+        create-temporary-plot-pen "default"
+        set-plot-pen-mode 1
+        set-plot-pen-color black
+        plotxy num-days-completed mod 7 num-consumers
+        set num-consumers 0
+
+
+        set-current-plot "My Store Profit"
+        create-temporary-plot-pen "default"
+        set-plot-pen-color black
+        plotxy num-days-completed ((sold-stock - (purchased-stock * wholesale-cost)) / (purchased-stock * wholesale-cost + 1)) * 100
+
+      ]
+      ask houses [ set max-people avg-people-shopping ]
       ask consumers [set goal my-home]
     ][
       set is-day true
@@ -185,7 +211,10 @@ to go
   ifelse is-day [
     if ticks mod ticks-per-cycle = 0
     [
-      ask houses with [ random 10 < spawn-prob * 10 ][ spawn-consumer xcor ycor ]
+      ask houses with [ random 10 < spawn-prob * 10 and max-people > 0 ][
+        set max-people max-people - 1
+        spawn-consumer xcor ycor ]
+
     ]
   ][
     ask distributors [
@@ -207,28 +236,7 @@ to go
     ]
   ]
 
-  ask trucks with [ on-road? ] [
 
-    if goal = my-home and (member? patch-here [ neighbors4 ] of my-home) [
-      die
-    ]
-
-    if goal = go-to-store and (member? patch-here [ neighbors4 ] of go-to-store) [
-      let stock-asked stock
-      ask go-to-store[
-        set purchased-stock purchased-stock + stock-asked
-        set stock stock + stock-asked
-        set ordered? false
-      ]
-      set stock 0
-      set goal my-home
-      set speed 0
-      set prev-patch nobody
-      set temp-prev-patch nobody
-    ]
-
-    travel
-    ]
   ]
 
   ;; have the intersections change their color
@@ -238,10 +246,10 @@ to go
   ;; and set the color of the cars to an appropriate color based on their speed
 
   ask retailers [
-    if not ordered? and stock < 500[
+    if not ordered? and stock < 100[
       let my-distributor one-of distributors in-radius 100
       let store-value self
-      let stock-ordered 2000
+      let stock-ordered 700
       hatch-trucks 1 [
         set xcor [pxcor] of my-distributor
         set ycor [pycor] of my-distributor
@@ -278,13 +286,36 @@ to go
 
     if at-store? = false[
       set roaming-time roaming-time + 1
-      if roaming-time = [max-roaming-time] of my-home [
+      if roaming-time >= [max-roaming-time] of my-home [
         set goal my-home
       ]
       travel
       ]
   ]
   label-subject ;; if we're watching a car, have it display its goal
+
+  ask trucks with [ on-road? ] [
+
+    if goal = my-home and (member? patch-here [ neighbors4 ] of my-home) [
+      die
+    ]
+
+    if goal = go-to-store and (member? patch-here [ neighbors4 ] of go-to-store) [
+      let stock-asked stock
+      ask go-to-store[
+        set purchased-stock purchased-stock + stock-asked
+        set stock stock + stock-asked
+        set ordered? false
+      ]
+      set stock 0
+      set goal my-home
+      set speed 0
+      set prev-patch nobody
+      set temp-prev-patch nobody
+    ]
+
+    travel
+    ]
 
   tick
 
@@ -329,10 +360,11 @@ to shopping
       set go-to-store one-of available-store
       set goal go-to-store
     ]
-    set sold-stock stock
+    set sold-stock sold-stock + stock
     set stock 0
 
   ]
+  set num-consumers num-consumers + 1
   set waiting-list lput agent waiting-list
   set shoppers-list but-first shoppers-list
 end
@@ -413,10 +445,7 @@ to set-speed  ;; turtle procedure
        let min-consumer-speed [speed] of min-one-of consumers-ahead [speed]
       set change-speed lput min-consumer-speed change-speed
     ]
-
     set speed min change-speed
-
-
       slow-down
   ]
   [ speed-up ]
@@ -584,28 +613,10 @@ ticks
 30.0
 
 PLOT
-465
-255
-683
-430
-Average Wait Time of Cars
-Time
-Average Wait
-0.0
-100.0
-0.0
-5.0
-true
-false
-"" ""
-PENS
-"default" 1.0 0 -16777216 true "" "plot mean [wait-time] of consumers "
-
-PLOT
+20
 240
-255
-456
-430
+236
+415
 Average Speed of Cars
 Time
 Average Speed
@@ -633,24 +644,6 @@ spawn-prob
 1
 NIL
 HORIZONTAL
-
-PLOT
-17
-254
-231
-429
-Stopped Cars
-Time
-Stopped Cars
-0.0
-100.0
-0.0
-100.0
-true
-false
-"" ""
-PENS
-"default" 1.0 0 -2674135 true "" "plot num-cars-stopped"
 
 BUTTON
 230
@@ -695,7 +688,7 @@ speed-limit
 speed-limit
 0.1
 1
-0.8
+0.6
 0.1
 1
 NIL
@@ -710,7 +703,7 @@ ticks-per-cycle
 ticks-per-cycle
 1
 100
-10.0
+45.0
 1
 1
 NIL
@@ -829,10 +822,10 @@ NIL
 1
 
 PLOT
-465
-85
-665
-235
+520
+240
+740
+415
 My Store Profit
 NIL
 NIL
@@ -842,21 +835,63 @@ NIL
 10.0
 true
 false
-"set-plot-y-range -100 100" ""
+"" ""
 PENS
-"default" 1.0 0 -16777216 true "" "plot [((sold-stock - purchased-stock * wholesale-cost) / (purchased-stock * wholesale-cost + 1)) * 100] of one-of retailers with [my-store = true]"
 
 SLIDER
-255
-125
-427
-158
+250
+140
+422
+173
 wholesale-cost
 wholesale-cost
 0
 1
-0.8
+0.65
 0.01
+1
+NIL
+HORIZONTAL
+
+PLOT
+265
+240
+490
+415
+Number of Consumers
+NIL
+NIL
+0.0
+10.0
+0.0
+10.0
+true
+false
+"" ""
+PENS
+
+MONITOR
+665
+10
+762
+55
+Number of days
+num-days-completed + 1
+17
+1
+11
+
+SLIDER
+250
+100
+422
+133
+avg-people-shopping
+avg-people-shopping
+0
+10
+10.0
+1
 1
 NIL
 HORIZONTAL
