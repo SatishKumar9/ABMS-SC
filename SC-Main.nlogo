@@ -7,6 +7,8 @@ globals
   ;; patch agentsets
   intersections ;; agentset containing the patches that are intersections
   roads         ;; agentset containing the patches that are roads
+
+  is-day
 ]
 
 breed [consumers consumer]
@@ -99,6 +101,7 @@ to setup-globals
   set num-cars-stopped 0
   ;; don't make acceleration 0.1 since we could get a rounding error and end up on a patch boundary
   set acceleration 0.099
+  set is-day true
 end
 
 ;; Make the patches have appropriate colors, set up the roads and intersections agentsets,
@@ -133,10 +136,10 @@ end
 
 to setup-retailers
   ask retailers[
-    set stock random 100 + 100
+    set stock random 1000 + 1000
     set purchased-stock stock
     set sold-stock 0
-    set max-inventory random 1000 + 500
+    set max-inventory random 1000 + 5000
     set waiting-list []
     set shoppers-list []
     set max-occupancy random 10 + 10
@@ -170,20 +173,22 @@ end
 
 ;; Run the simulation
 to go
-
-  if ticks mod ticks-per-cycle = 0
-  [
-    ask houses with [ random 10 < spawn-prob * 10 ][ spawn-consumer xcor ycor ]
+  if ticks != 0 and ticks mod 720 = 0[
+    ifelse is-day[
+      set is-day false
+      ask consumers [set goal my-home]
+    ][
+      set is-day true
+    ]
   ]
 
-
-  ;; have the intersections change their color
-  set num-cars-stopped 0
-
-  ;; set the cars’ speed, move them forward their speed, record data for plotting,
-  ;; and set the color of the cars to an appropriate color based on their speed
-
-  ask distributors [
+  ifelse is-day [
+    if ticks mod ticks-per-cycle = 0
+    [
+      ask houses with [ random 10 < spawn-prob * 10 ][ spawn-consumer xcor ycor ]
+    ]
+  ][
+    ask distributors [
     let place-at get-empty-road
     if place-at != nobody
     [
@@ -223,13 +228,20 @@ to go
     ]
 
     travel
+    ]
   ]
 
+  ;; have the intersections change their color
+  set num-cars-stopped 0
+
+  ;; set the cars’ speed, move them forward their speed, record data for plotting,
+  ;; and set the color of the cars to an appropriate color based on their speed
+
   ask retailers [
-    if not ordered? and stock < 50[
+    if not ordered? and stock < 500[
       let my-distributor one-of distributors in-radius 100
       let store-value self
-      let stock-ordered 200
+      let stock-ordered 2000
       hatch-trucks 1 [
         set xcor [pxcor] of my-distributor
         set ycor [pycor] of my-distributor
@@ -251,7 +263,7 @@ to go
 
   ask consumers [
     if goal = my-home and (member? patch-here [ neighbors4 ] of my-home) [
-      if stock-needed > 0 [
+      if stock-needed > 0 and is-day [
         ask my-home [
           set max-roaming-time max-roaming-time + 10
         ]
@@ -273,6 +285,7 @@ to go
       ]
   ]
   label-subject ;; if we're watching a car, have it display its goal
+
   tick
 
 end
@@ -831,7 +844,22 @@ true
 false
 "set-plot-y-range -100 100" ""
 PENS
-"default" 1.0 0 -16777216 true "" "plot [((sold-stock - purchased-stock * 0.8) / (purchased-stock * 0.8 + 1)) * 100] of one-of retailers with [my-store = true]"
+"default" 1.0 0 -16777216 true "" "plot [((sold-stock - purchased-stock * wholesale-cost) / (purchased-stock * wholesale-cost + 1)) * 100] of one-of retailers with [my-store = true]"
+
+SLIDER
+255
+125
+427
+158
+wholesale-cost
+wholesale-cost
+0
+1
+0.8
+0.01
+1
+NIL
+HORIZONTAL
 
 @#$#@#$#@
 ## ACKNOWLEDGMENT
