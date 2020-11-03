@@ -459,14 +459,14 @@ end
 
 
 to slow-down
-  ifelse speed <= 0
+  ifelse speed <= 0 or speed - acceleration < 0
     [ set speed 0 ]
     [ set speed speed - acceleration ]
 end
 
 
 to speed-up
-  ifelse speed > speed-limit
+  ifelse speed > speed-limit or speed + acceleration > speed-limit
     [ set speed speed-limit ]
     [ set speed speed + acceleration ]
 end
@@ -909,30 +909,31 @@ HORIZONTAL
 @#$#@#$#@
 ## WHAT IS IT?
 
-The Profit maximization for a Retailer in a Supply Chain Network model simulates how retailer profit changes over time with the shopping behaviour of consumers, by moving in traffic across a city layout, whose layout can also be designed using another model in the series named "Supply chain - Layout".
+Profit maximization of a retailer in a Supply Chain Network simulates how the profit of a retailer changes over time by keeping into account the following factors
+1. Shopping behaviour of consumers
+2. Moving in traffic across a city layout (can be designed using another model named "Supply chain - layout")
 
-This model simulates the day-night movement of consumers, by giving the goals - to drive to-and-from stores. The agents in this model use goal-based cognition.
+This model simulates the day-night movement of consumers, by giving the goals, namely driving to-and-from a store. The agents in this model use goal-based cognition.
 
 ## HOW IT WORKS
 
-The model simulates day-night simulation of a supply chain network, to capture the movement of consumers. Each time step(tick) is assumed to be 1 minute.  So every 1,440 ticks(time steps) represents a complete day and thus, every 720 ticks represents half-a-day. 
+The model simulates day-night simulation of a supply chain network, to capture the movement of consumers. Each time step(a tick) is assumed to be 1 minute.  Every 720 minutes (time steps) represents half-a-day. 
 
-Each consumer has a house patch and a store patch. The cars(consumers) alternately drive from home to store, and store to home, or another store, if their stock requirement isn't met.
+All the consumers try to shop at day time. During the remaining half of day, i.e. at night-time, remaining consumers head back to thier houses and only trucks move around to deliver products (if any) from distributors to retailers. This repeats for every 1440 minutes(time steps) to simulate days, weeks, and so on. 
 
-All the consumers try to shop at day time. During day-time, the consumers spawn at random time steps across houses. They start moving towards their destination. During other half of the day (720 ticks of night-time), remaining consumers head back to their homes and only trucks move on the road to deliver ordered stocks from distributors to retailers. This repeats for every 1440 minutes(time steps) to simulate days, weeks, and so on. 
+During the day-time, consumers spawn at randomly across houses. They start moving towards their destination. At each time step, the cars(consumers) take their next step towards the goal they are trying to get to (store or house) and attempt to move forward at their current speed. If their current speed is less than the speed limit and there is no car directly in front of them, they accelerate. If there is a slower car in front of them, they match the speed of the slower car and decelerate. If there is a stationary car in front of them, they stop.
 
-The retailers raise an order from distributor when their stocks reduce a threshold and as said, the delivery happens only at night.
+Each consumer has a house patch and a store patch. The cars will alternatively drive from house to store, store to house or to another store (if their stock requirement isn't met).
 
-Each time step, the cars(consumers)/trucks face the next destination they are trying to get to (either store or home) and attempt to move forward at their current speed. If their current speed is less than the speed limit and there is no car/truck directly in front of them, they accelerate. If there is a slower car/truck in front of them, they match the speed of the slower car/truck and decelerate. If there is a stopped car/truck in front of them, they stop.
-
+The retailers place an order from a distributor when their stocks reduce below a threshold and the delivery happens only at night.
 
 ## HOW TO USE IT
 
-Import the city layout desgined using the "Supply chain - layout" model. (You can always change any existing layouts by importing it first using the model. Don't forget to export the layout before importing it here!!). 
+Import the city layout desgined using the "Supply chain - layout" model. (You can always change any existing layouts by importing it using the model). 
 
 Press the SETUP button.
 
-At this time, you may configure the slider values like ticks-per-cycle, spawn-prob, speed-limit, avg-people-shopping and wholesale price cost of product. See below for details.
+At this time, you may configure the slider values like ticks-per-cycle, spawn-prob, speed-limit and wholesale price cost of product. See below for details.
 
 Start the simulation by pressing the GO button. You may continue to make changes to any slider values while the simulation is running.
 
@@ -940,36 +941,34 @@ Start the simulation by pressing the GO button. You may continue to make changes
 
 IMPORT-LAYOUT -- imports an exixting layout created using "supply chain layout" model. 
 
-SETUP -- All initial parameters are set to every agent.
+SETUP -- All initial parameters are set for every agent.
 
-GO -- runs the simulation indefinitely. Consumers spawn and travel from their homes to the stores and back. Trucks spawn and travel, only when there's an order placed by a retailer.
+GO -- runs the simulation indefinitely. Consumers spawn and travel from their houses to stores and back. Trucks spawn and travel, only when there's an order placed by a retailer.
 
-GO-ONCE -- run the simulation for one time step
+WATCH A CAR -- selects a car to watch. Sets the car's label to its goal. Displays the car's house and the car's retail store it's headed to. Opens inspectors for the car being watched, it's house and store.
 
-WATCH A CAR -- selects a car to watch. Sets the car's label to its goal. Displays the car's house and the car's retail store it headed to. Opens inspectors for the watched car and its house and store.
-
-STOP WATCHING -- stops watching the watched car and resets its labels of house and store.
+STOP WATCHING -- stops watching the current car being watched, resets it's labels of house and store.
 
 ### Sliders
 
-SPEED-LIMIT -- sets the maximum speed for the consumers cars while travelling.
+SPEED-LIMIT -- sets the maximum speed for the consumers' cars while travelling.
 
-TICKS-PER-CYCLE -- spawns a consumer with some probability (set by spawn-prob slider) for each cycle from each house. This allows you to increase or decrease the number of consumers that can spawn from a single house within a day.
+TICKS-PER-CYCLE -- spawns a consumer with some probability (set by spawn-prob slider) for each cycle from every house. This allows you to increase or decrease the number of consumers that can spawn from a single house in a day.
 
-SPAWN-PROB -- the probability of spawning a consumer in every cycle for each house.
+SPAWN-PROB -- the probability of spawning a consumer in every cycle from every house.
 
-AVG-PEOPLE-SHOPPING -- the total average number of consumers spawn from a particular house at any time in a day. 
-
-WHOLESALE COST -- the price with which the retailer buys the products from the distributor. (The selling price is set to 1 per product)
+WHOLESALE COST -- the price with which the retailer buys products from the distributor. (The selling price is set to 1 per product)
 
 
 ### Plots
 
+STOPPED CARS -- displays the number of stopped cars over time.
+
 AVERAGE SPEED OF CARS -- displays the average speed of cars over time.
 
-NUMBER OF CONSUMERS -- displays number of consumers visit the user's store to shop each day in a week 
+AVERAGE WAIT TIME OF CARS -- displays the average time for which cars are stopped.
 
-MY-STORE-PROFIT -- displays profit for the user's store overtime.
+MY-STORE-PROFIT -- displays the profit for the user's store over time.
 
 
 ## THINGS TO NOTICE
@@ -984,7 +983,6 @@ MY-STORE-PROFIT -- displays profit for the user's store overtime.
 
 
 ## HOW TO CITE
-
 @#$#@#$#@
 default
 true
