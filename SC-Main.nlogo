@@ -139,6 +139,12 @@ to setup-retailers
     set ordered? false
     set num-consumers 0
   ]
+
+  ask retailers with [ my-store = true ] [
+    set stock initial-stock
+    set purchased-stock initial-stock
+    set max-occupancy store-max-occupancy
+  ]
 end
 
 
@@ -418,8 +424,8 @@ end
 ;; set the speed variable of the turtle to an appropriate value (not exceeding the
 ;; speed limit) based on whether there are turtles on the patch in front of the turtle
 to set-speed
-  let consumers-ahead consumers-on  patch-ahead 1
-  let trucks-ahead  trucks-on patch-ahead 1
+  let consumers-ahead consumers-on  patch-ahead 0.16
+  let trucks-ahead  trucks-on patch-ahead 0.16
 
   set consumers-ahead consumers-ahead with [ in-direction heading [heading] of myself]
   set trucks-ahead trucks-ahead with [ in-direction heading [heading] of myself]
@@ -902,6 +908,36 @@ spawn-prob
 1
 0.8
 0.1
+1
+NIL
+HORIZONTAL
+
+SLIDER
+205
+215
+377
+248
+initial-stock
+initial-stock
+1
+500
+500.0
+1
+1
+NIL
+HORIZONTAL
+
+SLIDER
+205
+175
+377
+208
+store-max-occupancy
+store-max-occupancy
+1
+100
+25.0
+1
 1
 NIL
 HORIZONTAL
