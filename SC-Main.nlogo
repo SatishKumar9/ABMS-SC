@@ -109,7 +109,7 @@ to setup-patches
   ]
   set roads patches with [ pcolor = white ]
   set intersections roads with [
-    check-neighbors4-pcolor = 4
+    check-neighbors4-pcolor >= 3
   ]
   setup-intersections
 end
@@ -921,7 +921,7 @@ initial-stock
 initial-stock
 1
 500
-500.0
+300.0
 1
 1
 NIL
