@@ -21,9 +21,15 @@ to draw
     let y round mouse-ycor
 
     if [floor(pcolor)] of patch x y = 64 [
-      if (draw-what? = "road") [
+      if (draw-what? = "city-road") [
         ask patch x y [
           if count turtles-here = 0 [set pcolor white]
+        ]
+      ]
+
+      if (draw-what? = "highway-road") [
+        ask patch x y [
+          if count turtles-here = 0 [set pcolor blue]
         ]
       ]
 
@@ -40,7 +46,7 @@ to draw
         ]
       ]
 
-      if (draw-what? = "MY STORE") [
+      if (draw-what? = "my store") [
         ask patch x y [
           ask turtles-here [die]
         ]
@@ -149,8 +155,8 @@ CHOOSER
 150
 draw-what?
 draw-what?
-"eraser" "road" "retail store" "house" "distributor" "MY STORE"
-0
+"eraser" "city-road" "highway-road" "retail store" "house" "distributor" "my store"
+6
 
 BUTTON
 110

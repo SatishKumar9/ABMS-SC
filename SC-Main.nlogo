@@ -29,6 +29,7 @@ retailers-own [
 
 consumers-own
 [
+  speed-limit
   speed              ;; the speed of the turtle
   wait-time          ;; the amount of time since the last time a turtle has moved
   go-to-store
@@ -43,6 +44,7 @@ consumers-own
 
 trucks-own
 [
+  speed-limit
   speed              ;; the speed of the turtle
   wait-time          ;; the amount of time since the last time a turtle has moved
   go-to-store
@@ -129,13 +131,13 @@ end
 
 to setup-retailers
   ask retailers[
-    set stock random 500 + 500
+    set stock random-normal 1000 100
     set purchased-stock stock
     set sold-stock 0
-    set max-inventory random 1000 + 5000
+    set max-inventory random-normal 6000 500
     set waiting-list []
     set shoppers-list []
-    set max-occupancy random 15 + 10
+    set max-occupancy random-normal 25 5
     set ordered? false
     set num-consumers 0
   ]
@@ -192,7 +194,7 @@ end
 
 to go-houses
   if ticks mod ticks-per-cycle = 0[
-    ask houses with [ random 10 < spawn-prob * 10 and max-people > 0 ]
+    ask houses with [ random-normal 10 2 < spawn-prob * 10 and max-people > 0 ]
     [
       set max-people max-people - 1
       spawn-consumer xcor ycor
@@ -327,7 +329,7 @@ to spawn-consumer[house-xcor house-ycor]
     hatch-consumers 1 [
       set xcor [pxcor] of place-at
       set ycor [pycor] of place-at
-      set stock-needed random 5 + 1
+      set stock-needed random-normal 5 2
       set at-store? false
       set prev-patch nobody
       set temp-prev-patch nobody
@@ -472,6 +474,12 @@ end
 
 
 to speed-up
+  if pcolor = white [
+    set speed-limit city-speed-limit
+  ]
+  if pcolor = blue [
+    set speed-limit highway-speed-limit
+  ]
   ifelse speed > speed-limit or speed + acceleration > speed-limit
     [ set speed speed-limit ]
     [ set speed speed + acceleration ]
@@ -479,6 +487,12 @@ end
 
 
 to set-car-color
+  if pcolor = white [
+    set speed-limit city-speed-limit
+  ]
+  if pcolor = blue [
+    set speed-limit highway-speed-limit
+  ]
   ifelse speed < (speed-limit / 2)
     [ set color blue ]
     [ set color cyan + 2 ]
@@ -675,8 +689,8 @@ SLIDER
 135
 175
 168
-speed-limit
-speed-limit
+city-speed-limit
+city-speed-limit
 0.1
 1
 0.6
@@ -898,10 +912,10 @@ Number of consumers shopping at my store in a day
 1
 
 SLIDER
-30
-185
-202
-218
+25
+215
+197
+248
 spawn-prob
 spawn-prob
 0
@@ -921,7 +935,7 @@ initial-stock
 initial-stock
 1
 500
-300.0
+297.0
 1
 1
 NIL
@@ -938,6 +952,21 @@ store-max-occupancy
 100
 25.0
 1
+1
+NIL
+HORIZONTAL
+
+SLIDER
+25
+175
+197
+208
+highway-speed-limit
+highway-speed-limit
+0.1
+1
+0.8
+0.1
 1
 NIL
 HORIZONTAL
