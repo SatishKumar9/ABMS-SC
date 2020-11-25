@@ -29,7 +29,7 @@ to draw
 
       if (draw-what? = "highway-road") [
         ask patch x y [
-          if count turtles-here = 0 [set pcolor blue]
+          if count turtles-here = 0 [set pcolor 109]
         ]
       ]
 
@@ -156,7 +156,7 @@ CHOOSER
 draw-what?
 draw-what?
 "eraser" "city-road" "highway-road" "retail store" "house" "distributor" "my store"
-6
+4
 
 BUTTON
 110

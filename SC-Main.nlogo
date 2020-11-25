@@ -109,7 +109,7 @@ to setup-patches
   ask patches [
     set intersection? false
   ]
-  set roads patches with [ pcolor = white ]
+  set roads patches with [ pcolor = white or pcolor = 109 ]
   set intersections roads with [
     check-neighbors4-pcolor >= 3
   ]
@@ -118,7 +118,7 @@ end
 
 
 to-report check-neighbors4-pcolor
-  report count neighbors4 with [ pcolor = white ]
+  report count neighbors4 with [ pcolor = white or pcolor = 109 ]
 end
 
 
@@ -171,7 +171,7 @@ end
 
 ;; Find a road patch without any turtles on it and place the turtle there.
 to-report get-empty-road
-  report one-of neighbors4 with [ pcolor = white and not any? turtles-on self ]
+  report one-of neighbors4 with [ (pcolor = white and not any? turtles-on self) or (pcolor = 109 and not any? turtles-on self) ]
 end
 
 
@@ -245,8 +245,8 @@ to go-retailers
       ]
       set ordered? true
     ]
-    if length shoppers-list > 0[shopping]
-    if length waiting-list > 0[get-car-on-road]
+    if length shoppers-list > 0 [shopping]
+    if length waiting-list > 0 [get-car-on-road]
   ]
 end
 
@@ -348,25 +348,27 @@ end
 
 to shopping
   let agent first shoppers-list
-  ifelse stock >= [stock-needed] of agent
-  [
-    set stock stock - [stock-needed] of agent
-    set sold-stock sold-stock + [stock-needed] of agent
-    ask agent [
-      set stock-needed 0
+  if agent != nobody[
+    ifelse stock >= [stock-needed] of agent
+    [
+      set stock stock - [stock-needed] of agent
+      set sold-stock sold-stock + [stock-needed] of agent
+      ask agent [
+        set stock-needed 0
+      ]
+    ][
+      let current-stock stock
+      ask agent [
+        set stock-needed stock-needed - current-stock
+        let available-store retailers in-radius 100
+        let remove-store go-to-store
+        set available-store available-store with [ self != remove-store ]
+        set go-to-store one-of available-store
+        set goal go-to-store
+      ]
+      set sold-stock sold-stock + stock
+      set stock 0
     ]
-  ][
-    let current-stock stock
-    ask agent [
-      set stock-needed stock-needed - current-stock
-      let available-store retailers in-radius 100
-      let remove-store go-to-store
-      set available-store available-store with [ self != remove-store ]
-      set go-to-store one-of available-store
-      set goal go-to-store
-    ]
-    set sold-stock sold-stock + stock
-    set stock 0
   ]
   set num-consumers num-consumers + 1
   set waiting-list lput agent waiting-list
@@ -380,13 +382,15 @@ to get-car-on-road
   [
     let agent first waiting-list
     set waiting-list but-first waiting-list
-    ask agent [
-      set xcor [pxcor] of place-at
-      set ycor [pycor] of place-at
-      set at-store? false
-      set speed 0
-      set prev-patch nobody
-      set temp-prev-patch nobody
+    if (agent != nobody) [
+      ask agent [
+        set xcor [pxcor] of place-at
+        set ycor [pycor] of place-at
+        set at-store? false
+        set speed 0
+        set prev-patch nobody
+        set temp-prev-patch nobody
+      ]
     ]
   ]
 end
@@ -405,7 +409,7 @@ end
 
 to-report next-patch
   ;; CHOICES is an agentset of the candidate patches that the car can move to (white patches are roads)
-  let choices neighbors with [ pcolor = white ]
+  let choices neighbors with [ pcolor = white or pcolor = 109 ]
   if prev-patch != nobody and member? prev-patch choices
   [
     let prev-xcor [pxcor] of prev-patch
@@ -477,7 +481,7 @@ to speed-up
   if pcolor = white [
     set speed-limit city-speed-limit
   ]
-  if pcolor = blue [
+  if pcolor = 109 [
     set speed-limit highway-speed-limit
   ]
   ifelse speed > speed-limit or speed + acceleration > speed-limit
@@ -490,7 +494,7 @@ to set-car-color
   if pcolor = white [
     set speed-limit city-speed-limit
   ]
-  if pcolor = blue [
+  if pcolor = 109 [
     set speed-limit highway-speed-limit
   ]
   ifelse speed < (speed-limit / 2)
@@ -607,9 +611,9 @@ end
 @#$#@#$#@
 GRAPHICS-WINDOW
 745
-55
+60
 1194
-505
+510
 -1
 -1
 11.92
@@ -634,9 +638,9 @@ ticks
 
 PLOT
 30
-330
+335
 246
-505
+510
 Average Speed of Cars
 Time
 Average Speed
@@ -686,9 +690,9 @@ NIL
 
 SLIDER
 30
-135
+145
 175
-168
+178
 city-speed-limit
 city-speed-limit
 0.1
@@ -701,9 +705,9 @@ HORIZONTAL
 
 SLIDER
 30
-95
+105
 175
-128
+138
 ticks-per-cycle
 ticks-per-cycle
 1
@@ -716,9 +720,9 @@ HORIZONTAL
 
 BUTTON
 30
-255
+285
 175
-288
+318
 watch a car
 watch-a-car
 NIL
@@ -733,9 +737,9 @@ NIL
 
 BUTTON
 180
-255
+285
 325
-288
+318
 stop watching
 stop-watching
 NIL
@@ -767,9 +771,9 @@ NIL
 
 MONITOR
 680
-55
+60
 737
-100
+105
 houses
 count houses
 17
@@ -778,9 +782,9 @@ count houses
 
 MONITOR
 625
-55
+60
 682
-100
+105
 retailers
 count retailers
 17
@@ -789,9 +793,9 @@ count retailers
 
 MONITOR
 555
-55
+60
 627
-100
+105
 distributors
 count distributors
 17
@@ -800,9 +804,9 @@ count distributors
 
 MONITOR
 555
-285
+290
 627
-330
+335
 Consumers
 count consumers
 17
@@ -828,9 +832,9 @@ NIL
 
 PLOT
 500
-330
+335
 720
-505
+510
 My Store Profit
 Days
 Profit
@@ -844,10 +848,10 @@ false
 PENS
 
 SLIDER
-205
-135
-377
-168
+225
+145
+397
+178
 wholesale-cost
 wholesale-cost
 0
@@ -860,9 +864,9 @@ HORIZONTAL
 
 PLOT
 275
-330
+335
 485
-505
+510
 Number of Consumers
 Days in week
 Consumers
@@ -876,15 +880,15 @@ false
 PENS
 
 SLIDER
-205
-95
-377
-128
+225
+105
+397
+138
 avg-people-shopping
 avg-people-shopping
 0
-10
-10.0
+100
+15.0
 1
 1
 NIL
@@ -892,9 +896,9 @@ HORIZONTAL
 
 MONITOR
 500
-285
+290
 557
-330
+335
 Day
 num-days-completed + 1
 17
@@ -912,40 +916,40 @@ Number of consumers shopping at my store in a day
 1
 
 SLIDER
-25
-215
-197
-248
+30
+225
+202
+258
 spawn-prob
 spawn-prob
 0
 1
-0.8
+1.0
 0.1
 1
 NIL
 HORIZONTAL
 
 SLIDER
-205
-215
-377
-248
+225
+225
+397
+258
 initial-stock
 initial-stock
 1
 500
-297.0
+500.0
 1
 1
 NIL
 HORIZONTAL
 
 SLIDER
-205
-175
-377
-208
+225
+185
+397
+218
 store-max-occupancy
 store-max-occupancy
 1
@@ -957,10 +961,10 @@ NIL
 HORIZONTAL
 
 SLIDER
-25
-175
-197
-208
+30
+185
+202
+218
 highway-speed-limit
 highway-speed-limit
 0.1
@@ -970,6 +974,16 @@ highway-speed-limit
 1
 NIL
 HORIZONTAL
+
+TEXTBOX
+275
+85
+425
+103
+My store setup\n
+11
+0.0
+1
 
 @#$#@#$#@
 ## WHAT IS IT?
